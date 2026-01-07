@@ -4,12 +4,8 @@
 const BIN_ID = "695ec4fed0ea881f405b8cdf";
 const X_ACCESS_KEY = "$2a$10$nzjX1kWtm5vCMZj8qtlSoeP/kUp77ZWnpFE6kWIcnBqe1fDL1lkDi";
 
-/* JSONBin v3:
-   - GET latest:  /v3/b/{id}/latest
-   - PUT update:  /v3/b/{id}
-*/
 const API_BASE = "https://api.jsonbin.io/v3/b";
-const LS_KEY = "futbol_stats_data_v1";
+const LS_KEY = "futbol_stats_data_v2";
 
 /* ============================
    UTIL
@@ -43,7 +39,6 @@ function toISODateInput(d=new Date()){
 }
 
 function fmtDate(iso){
-  // iso: YYYY-MM-DD
   if (!iso) return "";
   const [y,m,d] = iso.split("-").map(Number);
   const pad = n => String(n).padStart(2,"0");
@@ -55,12 +50,24 @@ function clampInt(v){
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 }
 
+function escapeHtml(str){
+  return String(str)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
 /* ============================
    DATA MODEL
+   v2:
+   match.playerStats: { [playerId]: {goals:int, assists:int} }
+   match.mvpVotes: [{ voter:string, picks:[p1,p2,p3], createdAt }]
    ============================ */
 function defaultData(){
   return {
-    version: 1,
+    version: 2,
     players: [],
     matches: [],
     updatedAt: new Date().toISOString()
@@ -70,7 +77,10 @@ function defaultData(){
 let state = {
   data: defaultData(),
   stats: null,
-  draft: null
+  draft: null,
+  ui: {
+    expandedMatches: new Set()
+  }
 };
 
 /* ============================
@@ -78,12 +88,9 @@ let state = {
    ============================ */
 async function loadRemote(){
   const url = `${API_BASE}/${BIN_ID}/latest`;
-  const res = await fetch(url, {
-    headers: { "X-Access-Key": X_ACCESS_KEY }
-  });
+  const res = await fetch(url, { headers: { "X-Access-Key": X_ACCESS_KEY } });
   if (!res.ok) throw new Error(`GET failed ${res.status}`);
   const json = await res.json();
-  // json.record holds your actual record in JSONBin v3
   return json?.record ?? defaultData();
 }
 
@@ -112,8 +119,109 @@ function saveLocal(record){
 }
 
 /* ============================
-   STATS
+   MIGRATION + SANITIZE
    ============================ */
+function sanitizeData(d){
+  const base = defaultData();
+  if (!d || typeof d !== "object") return base;
+
+  const out = {
+    version: 2,
+    players: Array.isArray(d.players) ? d.players.filter(p => p && p.id && p.name) : [],
+    matches: Array.isArray(d.matches) ? d.matches.filter(m => m && m.id && m.date) : [],
+    updatedAt: d.updatedAt || new Date().toISOString()
+  };
+
+  // migrate old matches (if any)
+  for (const m of out.matches){
+    m.teamA = Array.isArray(m.teamA) ? m.teamA : [];
+    m.teamB = Array.isArray(m.teamB) ? m.teamB : [];
+    m.createdAt = m.createdAt || new Date().toISOString();
+
+    // playerStats
+    if (!m.playerStats || typeof m.playerStats !== "object"){
+      m.playerStats = {};
+    }
+
+    // If legacy goals array exists: convert to counts
+    if (Array.isArray(m.goals) && m.goals.length){
+      for (const g of m.goals){
+        const scorer = g?.scorerId;
+        const assist = g?.assistId;
+        if (scorer){
+          m.playerStats[scorer] = m.playerStats[scorer] || { goals: 0, assists: 0 };
+          m.playerStats[scorer].goals += 1;
+        }
+        if (assist){
+          m.playerStats[assist] = m.playerStats[assist] || { goals: 0, assists: 0 };
+          m.playerStats[assist].assists += 1;
+        }
+      }
+    }
+    delete m.goals;
+
+    // MVP votes
+    if (!Array.isArray(m.mvpVotes)) m.mvpVotes = [];
+    if (Array.isArray(m.mvp) && m.mvp.some(Boolean) && m.mvpVotes.length === 0){
+      m.mvpVotes.push({
+        voter: "Legacy",
+        picks: [m.mvp[0] || null, m.mvp[1] || null, m.mvp[2] || null],
+        createdAt: new Date().toISOString()
+      });
+    }
+    delete m.mvp;
+
+    // normalize playerStats values
+    for (const [pid, ps] of Object.entries(m.playerStats)){
+      if (!ps || typeof ps !== "object") { delete m.playerStats[pid]; continue; }
+      m.playerStats[pid] = {
+        goals: clampInt(ps.goals),
+        assists: clampInt(ps.assists)
+      };
+    }
+
+    // normalize votes
+    m.mvpVotes = m.mvpVotes
+      .filter(v => v && typeof v.voter === "string" && v.voter.trim())
+      .map(v => ({
+        voter: v.voter.trim().slice(0, 40),
+        picks: Array.isArray(v.picks) ? [v.picks[0]||null, v.picks[1]||null, v.picks[2]||null] : [null,null,null],
+        createdAt: v.createdAt || new Date().toISOString()
+      }));
+  }
+
+  return out;
+}
+
+/* ============================
+   STATS + MATCH COMPUTED
+   ============================ */
+function computeMatchScore(m){
+  const sumGoals = (ids) => (ids || []).reduce((acc, pid) => {
+    const ps = m.playerStats?.[pid];
+    return acc + (ps ? clampInt(ps.goals) : 0);
+  }, 0);
+  const a = sumGoals(m.teamA);
+  const b = sumGoals(m.teamB);
+  return { a, b };
+}
+
+function computeMatchVoteTally(m){
+  const points = {};
+  const pickedCount = {};
+  const pts = [3,2,1];
+  for (const v of (m.mvpVotes || [])){
+    const picks = Array.isArray(v.picks) ? v.picks : [];
+    for (let i=0;i<3;i++){
+      const pid = picks[i];
+      if (!pid) continue;
+      points[pid] = (points[pid] || 0) + pts[i];
+      pickedCount[pid] = (pickedCount[pid] || 0) + 1;
+    }
+  }
+  return { points, pickedCount };
+}
+
 function computeStats(data){
   const playersById = new Map(data.players.map(p => [p.id, p]));
 
@@ -137,25 +245,22 @@ function computeStats(data){
     const teamB = new Set(m.teamB || []);
     const participants = new Set([...(m.teamA||[]), ...(m.teamB||[])]);
 
-    // played
+    // played + goals/assists
     for (const pid of participants){
-      if (stats[pid]) stats[pid].played += 1;
+      const s = stats[pid];
+      if (!s) continue;
+      s.played += 1;
+      const ps = m.playerStats?.[pid];
+      if (ps){
+        s.goals += clampInt(ps.goals);
+        s.assists += clampInt(ps.assists);
+      }
     }
 
-    // goals by team
-    let gA = 0, gB = 0;
+    // score + results + gf/ga
+    const { a:gA, b:gB } = computeMatchScore(m);
+    m._scoreA = gA; m._scoreB = gB;
 
-    for (const g of (m.goals || [])){
-      const scorer = g.scorerId;
-      const assist = g.assistId || null;
-      if (teamA.has(scorer)) gA += 1;
-      else if (teamB.has(scorer)) gB += 1;
-
-      if (stats[scorer]) stats[scorer].goals += 1;
-      if (assist && stats[assist]) stats[assist].assists += 1;
-    }
-
-    // gf/ga + result
     for (const pid of participants){
       const s = stats[pid];
       if (!s) continue;
@@ -170,20 +275,19 @@ function computeStats(data){
       else s.draws += 1;
     }
 
-    // MVP points 3-2-1
-    const mvp = (m.mvp || []).filter(Boolean);
+    // MVP votes tally
     const pts = [3,2,1];
-    for (let i=0;i<3;i++){
-      const pid = mvp[i];
-      if (!pid || !stats[pid]) continue;
-      stats[pid].mvpPoints += pts[i];
-      if (i===0) stats[pid].mvp1 += 1;
-      if (i===1) stats[pid].mvp2 += 1;
-      if (i===2) stats[pid].mvp3 += 1;
+    for (const v of (m.mvpVotes || [])){
+      const picks = Array.isArray(v.picks) ? v.picks : [];
+      for (let i=0;i<3;i++){
+        const pid = picks[i];
+        if (!pid || !stats[pid]) continue;
+        stats[pid].mvpPoints += pts[i];
+        if (i===0) stats[pid].mvp1 += 1;
+        if (i===1) stats[pid].mvp2 += 1;
+        if (i===2) stats[pid].mvp3 += 1;
+      }
     }
-
-    // store computed score in match (for render convenience)
-    m._scoreA = gA; m._scoreB = gB;
   }
 
   const list = Object.values(stats);
@@ -191,17 +295,11 @@ function computeStats(data){
   const byAssists = [...list].sort((a,b)=> b.assists - a.assists || b.goals - a.goals || b.mvpPoints - a.mvpPoints);
   const byMvp = [...list].sort((a,b)=> b.mvpPoints - a.mvpPoints || b.goals - a.goals || b.assists - a.assists);
 
-  return {
-    playersById,
-    statsById: stats,
-    byGoals,
-    byAssists,
-    byMvp
-  };
+  return { playersById, statsById: stats, byGoals, byAssists, byMvp };
 }
 
 /* ============================
-   RENDER HELPERS
+   VIEW ROUTING
    ============================ */
 function setView(name){
   const map = {
@@ -214,7 +312,7 @@ function setView(name){
     el.classList.toggle("hidden", k !== name);
   }
   $$(".tab").forEach(b => b.classList.toggle("is-active", b.dataset.view === name));
-  renderAll(); // cheap + safe
+  renderAll();
 }
 
 function playerName(pid){
@@ -227,132 +325,132 @@ function sortMatchesDesc(a,b){
 }
 
 /* ============================
-   VIEWS
+   PERSIST
+   ============================ */
+async function persist(msg){
+  try{
+    overlay(true, "Guardando…");
+    state.data.updatedAt = new Date().toISOString();
+    saveLocal(state.data);
+    await saveRemote(state.data);
+    toast(msg + " ✅");
+  }catch(err){
+    console.error(err);
+    saveLocal(state.data);
+    toast(msg + " ⚠️ (quedó en tu navegador)");
+  }finally{
+    overlay(false);
+    state.stats = computeStats(state.data);
+    renderAll();
+  }
+}
+
+/* ============================
+   PLAYERS VIEW (tabla)
    ============================ */
 function renderPlayers(){
   const el = $("#viewPlayers");
   const data = state.data;
   const stats = state.stats;
 
-  const totalPlayers = data.players.length;
-  const totalMatches = data.matches.length;
-
-  const topGoal = stats.byGoals[0];
-  const topAst = stats.byAssists[0];
-  const topMvp = stats.byMvp[0];
-
   el.innerHTML = `
-    <div class="row">
-      <div class="col">
-        <div class="h1">Jugadores</div>
-        <div class="p">Cargás jugadores acá y la app se encarga del resto (sí, incluso de tu ego).</div>
+    <div class="h1">Jugadores</div>
 
-        <div class="row">
-          <div class="cardlet" style="flex:1">
-            <div class="kpi"><div class="lab">Jugadores</div><div class="num">${totalPlayers}</div></div>
-          </div>
-          <div class="cardlet" style="flex:1">
-            <div class="kpi"><div class="lab">Partidos</div><div class="num">${totalMatches}</div></div>
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
+    <div class="row" style="align-items:end;">
+      <div style="flex:1; min-width:260px;">
         <div class="h2">Agregar jugador</div>
-        <div class="row">
-          <input class="input" id="playerName" placeholder="Nombre (ej: Tomi)" />
-          <button class="btn btn-primary" id="btnAddPlayer">+ Agregar</button>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="h2">Lista</div>
-        <input class="input" id="playerSearch" placeholder="Buscar jugador…" />
-
-        <div id="playersGrid" class="grid" style="margin-top:10px;"></div>
+        <input class="input" id="playerName" placeholder="Nombre (ej: Tomi)" />
       </div>
-
-      <div class="col">
-        <div class="h1">Resumen rápido</div>
-
-        <div class="cardlet">
-          <div class="h2">Líderes</div>
-          <div class="row" style="gap:10px; align-items:center;">
-            <span class="badge good">Goles: ${topGoal ? `${topGoal.name} (${topGoal.goals})` : "—"}</span>
-            <span class="badge good">Asist.: ${topAst ? `${topAst.name} (${topAst.assists})` : "—"}</span>
-            <span class="badge good">MVP: ${topMvp ? `${topMvp.name} (${topMvp.mvpPoints} pts)` : "—"}</span>
-          </div>
-          <div class="mini" style="margin-top:10px;">MVP suma 3-2-1 puntos (primera/segunda/tercera figura).</div>
-        </div>
-
-        <div class="cardlet">
-          <div class="h2">Tips</div>
-          <ul class="mini" style="margin:8px 0 0 18px;">
-            <li>En <b>Nuevo partido</b> podés asignar por click o arrastrando.</li>
-            <li>Goles con asistencia opcional (porque a veces “la asistencia” fue un rebote… y está bien).</li>
-            <li>Si Sync falla, queda cacheado en tu navegador y reintenta después.</li>
-          </ul>
-        </div>
+      <div style="min-width:180px;">
+        <button class="btn btn-primary" id="btnAddPlayer">+ Agregar</button>
+      </div>
+      <div style="flex:1; min-width:260px;">
+        <div class="h2">Buscar</div>
+        <input class="input" id="playerSearch" placeholder="Buscar…" />
       </div>
     </div>
+
+    <div class="hr"></div>
+
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Jugador</th>
+          <th>PJ</th>
+          <th>G</th>
+          <th>A</th>
+          <th>MVP</th>
+          <th>W-D-L</th>
+          <th>GF/GA</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="playersTbody"></tbody>
+    </table>
+    <div class="mini" style="margin-top:10px;">MVP = puntos 3-2-1 por cada votante.</div>
   `;
 
-  const grid = $("#playersGrid");
   const q = ($("#playerSearch")?.value || "").trim().toLowerCase();
-  const list = data.players
-    .map(p => ({
-      p,
-      s: state.stats.statsById[p.id] || null
-    }))
+  const rows = data.players
+    .map(p => ({ p, s: stats.statsById[p.id] }))
     .filter(x => !q || x.p.name.toLowerCase().includes(q))
-    .sort((a,b)=> (b.s?.mvpPoints||0) - (a.s?.mvpPoints||0) || (b.s?.goals||0) - (a.s?.goals||0));
+    .sort((a,b)=> (b.s.mvpPoints - a.s.mvpPoints) || (b.s.goals - a.s.goals) || a.p.name.localeCompare(b.p.name));
 
-  grid.innerHTML = list.length ? list.map(({p,s}) => `
-    <div class="cardlet">
-      <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
-        <div>
-          <div style="font-weight:950; font-size:16px;">${escapeHtml(p.name)}</div>
-          <div class="mini">PJ ${s?.played||0} · G ${s?.goals||0} · A ${s?.assists||0} · MVP ${s?.mvpPoints||0}</div>
-          <div class="mini">W-D-L ${s?.wins||0}-${s?.draws||0}-${s?.losses||0} · GF/GA ${s?.gf||0}/${s?.ga||0}</div>
-        </div>
-        <button class="btn btn-small btn-danger" data-del-player="${p.id}" title="Eliminar jugador">Eliminar</button>
-      </div>
-    </div>
-  `).join("") : `<div class="mini">No hay jugadores todavía. Dale, arrancá con el primer crack.</div>`;
+  const tb = $("#playersTbody");
+  tb.innerHTML = rows.length ? rows.map(({p,s}) => `
+    <tr>
+      <td><b>${escapeHtml(p.name)}</b></td>
+      <td>${s.played}</td>
+      <td>${s.goals}</td>
+      <td>${s.assists}</td>
+      <td>${s.mvpPoints}</td>
+      <td>${s.wins}-${s.draws}-${s.losses}</td>
+      <td>${s.gf}/${s.ga}</td>
+      <td><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
+    </tr>
+  `).join("") : `<tr><td colspan="8" class="mini">No hay jugadores todavía.</td></tr>`;
 
   $("#btnAddPlayer").onclick = async () => {
     const name = ($("#playerName").value || "").trim();
     if (!name) return toast("Poné un nombre.");
     if (state.data.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return toast("Ese jugador ya existe.");
     state.data.players.push({ id: uuid(), name });
-    state.data.updatedAt = new Date().toISOString();
     await persist("Jugador agregado");
     $("#playerName").value = "";
   };
 
   $("#playerSearch").oninput = () => renderPlayers();
 
-  grid.onclick = async (e) => {
+  el.onclick = async (e) => {
     const btn = e.target.closest("[data-del-player]");
     if (!btn) return;
     const pid = btn.dataset.delPlayer;
 
     const used = state.data.matches.some(m => (m.teamA||[]).includes(pid) || (m.teamB||[]).includes(pid));
-    if (used && !confirm("Ese jugador aparece en partidos. Si lo eliminás, se borra el nombre de esos registros. ¿Seguro?")) return;
+    if (used && !confirm("Ese jugador aparece en partidos. Si lo eliminás, se borra también de esos partidos. ¿Seguro?")) return;
 
     state.data.players = state.data.players.filter(p => p.id !== pid);
+
     // limpiar referencias en partidos
     for (const m of state.data.matches){
       m.teamA = (m.teamA||[]).filter(x => x !== pid);
       m.teamB = (m.teamB||[]).filter(x => x !== pid);
-      m.goals = (m.goals||[]).filter(g => g.scorerId !== pid && g.assistId !== pid);
-      m.mvp = (m.mvp||[]).filter(x => x !== pid);
+      if (m.playerStats) delete m.playerStats[pid];
+
+      // limpiar votos
+      m.mvpVotes = (m.mvpVotes||[]).map(v => ({
+        ...v,
+        picks: (v.picks||[]).map(x => x === pid ? null : x)
+      }));
     }
-    state.data.updatedAt = new Date().toISOString();
+
     await persist("Jugador eliminado");
   };
 }
 
+/* ============================
+   NEW MATCH VIEW (solo fecha+equipos)
+   ============================ */
 function renderNewMatch(){
   const el = $("#viewNewMatch");
   const data = state.data;
@@ -363,8 +461,8 @@ function renderNewMatch(){
       date: toISODateInput(new Date()),
       teamA: [],
       teamB: [],
-      goals: [],
-      mvp: [null,null,null],
+      playerStats: {},
+      mvpVotes: [],
       createdAt: new Date().toISOString()
     };
   }
@@ -377,184 +475,57 @@ function renderNewMatch(){
       const team = d.teamA.includes(p.id) ? "A" : d.teamB.includes(p.id) ? "B" : "N";
       return `
         <span class="player-chip" draggable="true"
-          data-player-id="${p.id}" data-team="${team}" title="Click para mover / Drag para asignar">
+          data-player-id="${p.id}" data-team="${team}" title="Click = rota / Drag = asigna">
           ${escapeHtml(p.name)}
           <small>${team==="A" ? "A" : team==="B" ? "B" : ""}</small>
         </span>
       `;
     }).join(" ");
 
-  const participants = [...new Set([...(d.teamA||[]), ...(d.teamB||[])])];
-  const optionsParticipants = participants
-    .map(pid => `<option value="${pid}">${escapeHtml(playerName(pid))}</option>`)
-    .join("");
-
-  // score live
-  const tmpMatch = { teamA: d.teamA, teamB: d.teamB, goals: d.goals, mvp: d.mvp };
-  const tmpData = { ...state.data, matches: [tmpMatch] };
-  const tmpStats = computeStats(tmpData);
-  const gA = tmpMatch._scoreA || 0;
-  const gB = tmpMatch._scoreB || 0;
-
-  const goalsList = (d.goals||[]).map((g, idx) => {
-    const a = g.assistId ? ` (A: ${escapeHtml(playerName(g.assistId))})` : "";
-    return `
-      <tr>
-        <td>${idx+1}</td>
-        <td>${escapeHtml(playerName(g.scorerId))}${a}</td>
-        <td><button class="btn btn-small btn-danger" data-del-goal="${idx}">Borrar</button></td>
-      </tr>
-    `;
-  }).join("");
-
-  const mvpBadges = d.mvp.map((pid, i) => {
-    const label = i===0 ? "🥇" : i===1 ? "🥈" : "🥉";
-    return `<span class="badge good">${label} ${pid ? escapeHtml(playerName(pid)) : "—"}</span>`;
-  }).join(" ");
-
   el.innerHTML = `
+    <div class="h1">Nuevo partido</div>
+    <div class="p">Primero armás fecha + equipos. Los goles/asistencias/votos se cargan después en “Partidos”.</div>
+
+    <div class="row" style="align-items:end;">
+      <div style="flex:1; min-width:260px;">
+        <div class="h2">Fecha</div>
+        <input class="input" type="date" id="matchDate" value="${d.date}" />
+      </div>
+      <div style="min-width:220px;">
+        <button class="btn btn-primary" id="btnSaveMatch">Guardar partido</button>
+      </div>
+      <div style="min-width:160px;">
+        <button class="btn" id="btnResetDraft">Reiniciar</button>
+      </div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="h2">Jugadores (click o drag)</div>
+    <div class="mini">Click = rota (sin equipo → A → B → sin equipo). Drag = tiralo en A o B.</div>
+    <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;" id="chipPool">
+      ${chips || `<span class="mini">No hay jugadores. Cargalos en “Jugadores”.</span>`}
+    </div>
+
+    <div class="hr"></div>
+
     <div class="row">
       <div class="col">
-        <div class="h1">Nuevo partido</div>
-        <div class="p">Armá equipos, cargá goles/asistencias y elegí 3 figuras.</div>
-
-        <div class="row" style="align-items:end;">
-          <div style="flex:1; min-width:260px;">
-            <div class="h2">Fecha</div>
-            <input class="input" type="date" id="matchDate" value="${d.date}" />
-          </div>
-          <div style="min-width:260px;">
-            <div class="h2">Marcador</div>
-            <div class="row" style="gap:10px; align-items:center;">
-              <span class="badge good">Equipo A: ${gA}</span>
-              <span class="badge good">Equipo B: ${gB}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="h2">Jugadores (click o drag)</div>
-        <div class="details">
-          <div class="mini">Tip: click = rota (sin equipo → A → B → sin equipo). Drag = tiralo en A o B.</div>
-          <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;" id="chipPool">
-            ${chips || `<span class="mini">No hay jugadores. Andá a “Jugadores” y cargalos.</span>`}
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="row">
-          <div class="col">
-            <div class="h2">Equipo A</div>
-            <div class="dropzone" id="zoneA" data-zone="A"></div>
-          </div>
-          <div class="col">
-            <div class="h2">Equipo B</div>
-            <div class="dropzone" id="zoneB" data-zone="B"></div>
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="h2">Goles</div>
-        <div class="row" style="align-items:end;">
-          <div style="flex:1; min-width:250px;">
-            <div class="mini">Goleador</div>
-            <select class="select" id="selScorer">
-              <option value="">Elegí…</option>
-              ${optionsParticipants}
-            </select>
-          </div>
-          <div style="flex:1; min-width:250px;">
-            <div class="mini">Asistencia (opcional)</div>
-            <select class="select" id="selAssist">
-              <option value="">Sin asistencia</option>
-              ${optionsParticipants}
-            </select>
-          </div>
-          <div style="min-width:160px;">
-            <button class="btn btn-primary" id="btnAddGoal">+ Gol</button>
-          </div>
-        </div>
-
-        <div style="margin-top:10px;">
-          <table class="table">
-            <thead><tr><th>#</th><th>Detalle</th><th></th></tr></thead>
-            <tbody>
-              ${goalsList || `<tr><td colspan="3" class="mini">Todavía no cargaste goles.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="h2">Figuras del partido (MVP 3-2-1)</div>
-        <div class="row" style="align-items:center;">
-          <div style="flex:1">${mvpBadges}</div>
-          <button class="btn" id="btnPickMvp">Elegir figuras</button>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="row">
-          <button class="btn" id="btnResetDraft">Reiniciar</button>
-          <button class="btn btn-primary" id="btnSaveMatch">Guardar partido</button>
-        </div>
+        <div class="h2">Equipo A</div>
+        <div class="dropzone" id="zoneA" data-zone="A"></div>
       </div>
-
       <div class="col">
-        <div class="h1">Vista rápida</div>
-        <div class="cardlet">
-          <div class="h2">Participantes</div>
-          <div class="mini">${participants.length} jugadores seleccionados</div>
-          <div class="mini" style="margin-top:6px;">
-            A: ${(d.teamA||[]).length} · B: ${(d.teamB||[]).length}
-          </div>
-        </div>
-
-        <div class="cardlet">
-          <div class="h2">Checklist</div>
-          <ul class="mini" style="margin:8px 0 0 18px;">
-            <li>Asigná equipos A/B</li>
-            <li>Cargá goles y asistencias</li>
-            <li>Elegí 3 figuras (🥇🥈🥉)</li>
-            <li>Guardá y listo</li>
-          </ul>
-        </div>
+        <div class="h2">Equipo B</div>
+        <div class="dropzone" id="zoneB" data-zone="B"></div>
       </div>
     </div>
   `;
 
   $("#matchDate").onchange = (e) => { d.date = e.target.value; };
 
-  // Drop zones render content
   renderTeamZone("A");
   renderTeamZone("B");
-
-  // Chip click toggle + drag
   setupChipInteractions();
-
-  $("#btnAddGoal").onclick = () => {
-    const scorerId = $("#selScorer").value;
-    const assistId = $("#selAssist").value || null;
-    if (!scorerId) return toast("Elegí goleador.");
-    if (assistId && assistId === scorerId) return toast("No te podés asistir a vos mismo (salvo que seas Maradona en FIFA).");
-    d.goals.push({ scorerId, assistId, at: new Date().toISOString() });
-    toast("Gol cargado");
-    renderNewMatch();
-  };
-
-  $("#viewNewMatch").onclick = (e) => {
-    const del = e.target.closest("[data-del-goal]");
-    if (!del) return;
-    const idx = Number(del.dataset.delGoal);
-    d.goals.splice(idx, 1);
-    toast("Gol borrado");
-    renderNewMatch();
-  };
-
-  $("#btnPickMvp").onclick = () => openMvpPicker();
 
   $("#btnResetDraft").onclick = () => {
     if (!confirm("¿Reiniciar el partido en edición?")) return;
@@ -564,52 +535,45 @@ function renderNewMatch(){
   };
 
   $("#btnSaveMatch").onclick = async () => {
-    const participantsNow = [...new Set([...(d.teamA||[]), ...(d.teamB||[])])];
     if (!d.date) return toast("Elegí fecha.");
-    if (participantsNow.length < 2) return toast("Sumá jugadores, no alcanza con vos y tu sombra.");
-    if ((d.teamA||[]).length < 1 || (d.teamB||[]).length < 1) return toast("Necesitás al menos 1 por equipo.");
-
-    // Validate MVP uniqueness
-    const mvp = d.mvp.filter(Boolean);
-    const uniq = new Set(mvp);
-    if (mvp.length && uniq.size !== mvp.length) return toast("Las figuras deben ser distintas.");
+    const participants = [...new Set([...(d.teamA||[]), ...(d.teamB||[])])];
+    if (participants.length < 2) return toast("Sumá jugadores.");
+    if (d.teamA.length < 1 || d.teamB.length < 1) return toast("Necesitás al menos 1 por equipo.");
 
     state.data.matches.push({
       id: d.id,
       date: d.date,
       teamA: [...d.teamA],
       teamB: [...d.teamB],
-      goals: [...d.goals],
-      mvp: [...d.mvp],
+      playerStats: {},
+      mvpVotes: [],
       createdAt: d.createdAt
     });
-    state.data.updatedAt = new Date().toISOString();
 
     state.draft = null;
-    await persist("Partido guardado");
+    await persist("Partido creado");
     setView("matches");
   };
 
   function renderTeamZone(team){
     const zone = team === "A" ? $("#zoneA") : $("#zoneB");
     const ids = team === "A" ? d.teamA : d.teamB;
-    const items = ids
-      .map(pid => `<span class="player-chip" draggable="true" data-player-id="${pid}" data-team="${team}">${escapeHtml(playerName(pid))}<small>${team}</small></span>`)
-      .join(" ");
-    zone.innerHTML = items || `<span class="mini">Arrastrá jugadores acá o clickealos arriba.</span>`;
+    zone.innerHTML = ids.length
+      ? ids.map(pid => `<span class="player-chip" draggable="true" data-player-id="${pid}" data-team="${team}">${escapeHtml(playerName(pid))}<small>${team}</small></span>`).join(" ")
+      : `<span class="mini">Arrastrá jugadores acá o clickealos arriba.</span>`;
   }
 
   function setupChipInteractions(){
     const root = $("#viewNewMatch");
 
-    // click cycle
+    // click cycle (delegated, once because we re-render)
     root.addEventListener("click", (e) => {
       const chip = e.target.closest(".player-chip");
       if (!chip) return;
       const pid = chip.dataset.playerId;
       toggleAssignment(pid);
       renderNewMatch();
-    }, { once: true }); // we re-render, so "once" is safe
+    }, { once:true });
 
     // drag
     $$(".player-chip", root).forEach(chip => {
@@ -620,10 +584,7 @@ function renderNewMatch(){
     });
 
     $$(".dropzone", root).forEach(zone => {
-      zone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        zone.classList.add("is-over");
-      });
+      zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("is-over"); });
       zone.addEventListener("dragleave", () => zone.classList.remove("is-over"));
       zone.addEventListener("drop", (e) => {
         e.preventDefault();
@@ -643,193 +604,291 @@ function renderNewMatch(){
     else if (inA) assignTo(pid, "B");
     else unassign(pid);
   }
-
   function assignTo(pid, team){
     unassign(pid);
     if (team === "A") d.teamA.push(pid);
     if (team === "B") d.teamB.push(pid);
-
-    // if goal scorer/assist now invalid? we'll keep it, user can fix; but MVP picker will show participants only
   }
-
   function unassign(pid){
     d.teamA = d.teamA.filter(x => x !== pid);
     d.teamB = d.teamB.filter(x => x !== pid);
-
-    // remove goals involving player if they are no longer in match
-    const participantsNow = new Set([...(d.teamA||[]), ...(d.teamB||[])]);
-    d.goals = (d.goals||[]).filter(g => participantsNow.has(g.scorerId) && (!g.assistId || participantsNow.has(g.assistId)));
-
-    // remove from MVP if not participant
-    d.mvp = d.mvp.map(x => participantsNow.has(x) ? x : null);
-  }
-
-  function openMvpPicker(){
-    const participantsNow = [...new Set([...(d.teamA||[]), ...(d.teamB||[])])];
-    if (participantsNow.length < 1) return toast("Primero seleccioná participantes.");
-
-    const modal = document.createElement("div");
-    modal.className = "overlay";
-    modal.innerHTML = `
-      <div class="card" style="width:min(920px,92vw); padding:16px; border-radius:18px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div>
-            <div class="h1" style="margin:0;">Elegir figuras</div>
-            <div class="mini">Click en un puesto (🥇🥈🥉) y después elegí jugador.</div>
-          </div>
-          <button class="btn" id="mvpClose">Cerrar</button>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="row" style="align-items:center;">
-          <button class="btn btn-primary" id="slot0">🥇 ${d.mvp[0] ? escapeHtml(playerName(d.mvp[0])) : "Vacante"}</button>
-          <button class="btn btn-primary" id="slot1">🥈 ${d.mvp[1] ? escapeHtml(playerName(d.mvp[1])) : "Vacante"}</button>
-          <button class="btn btn-primary" id="slot2">🥉 ${d.mvp[2] ? escapeHtml(playerName(d.mvp[2])) : "Vacante"}</button>
-          <button class="btn btn-danger" id="mvpClear">Limpiar</button>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="h2">Jugadores</div>
-        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;" id="mvpPlayers">
-          ${participantsNow.map(pid => `<button class="btn" data-pick="${pid}">${escapeHtml(playerName(pid))}</button>`).join("")}
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="row" style="justify-content:flex-end;">
-          <button class="btn btn-primary" id="mvpDone">Listo</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-
-    let activeSlot = 0;
-    const slotBtns = [$("#slot0", modal), $("#slot1", modal), $("#slot2", modal)];
-    highlight();
-
-    slotBtns.forEach((b, i) => b.onclick = () => { activeSlot = i; highlight(); });
-
-    $("#mvpPlayers", modal).onclick = (e) => {
-      const btn = e.target.closest("[data-pick]");
-      if (!btn) return;
-      const pid = btn.dataset.pick;
-
-      // uniqueness
-      const alreadyAt = d.mvp.findIndex(x => x === pid);
-      if (alreadyAt !== -1 && alreadyAt !== activeSlot) return toast("Ese jugador ya está en otra figura.");
-
-      d.mvp[activeSlot] = pid;
-      // auto-advance
-      activeSlot = Math.min(2, activeSlot + 1);
-      refreshSlots();
-      highlight();
-    };
-
-    $("#mvpClear", modal).onclick = () => {
-      d.mvp = [null,null,null];
-      activeSlot = 0;
-      refreshSlots(); highlight();
-    };
-
-    $("#mvpClose", modal).onclick = () => { modal.remove(); renderNewMatch(); };
-    $("#mvpDone", modal).onclick = () => { modal.remove(); renderNewMatch(); };
-
-    function refreshSlots(){
-      slotBtns[0].textContent = `🥇 ${d.mvp[0] ? playerName(d.mvp[0]) : "Vacante"}`;
-      slotBtns[1].textContent = `🥈 ${d.mvp[1] ? playerName(d.mvp[1]) : "Vacante"}`;
-      slotBtns[2].textContent = `🥉 ${d.mvp[2] ? playerName(d.mvp[2]) : "Vacante"}`;
-    }
-    function highlight(){
-      slotBtns.forEach((b,i)=>{
-        b.style.outline = (i===activeSlot) ? "3px solid rgba(57,211,83,.55)" : "none";
-      });
-    }
   }
 }
 
+/* ============================
+   MATCHES VIEW (visual + edición por jugador + votos)
+   ============================ */
 function renderMatches(){
   const el = $("#viewMatches");
   const list = state.data.matches.slice().sort(sortMatchesDesc);
 
   el.innerHTML = `
-    <div class="row">
-      <div class="col">
-        <div class="h1">Partidos</div>
-        <div class="p">Historial con detalle. El VAR acá es tu dedo borrando cosas.</div>
+    <div class="h1">Partidos</div>
+    <div class="p">Resultado arriba, equipos abajo. Click en un jugador para cargar ⚽ y 🥾. Votación de figuras con nombre.</div>
 
-        ${list.length ? list.map(m => {
-          const scoreA = m._scoreA ?? 0;
-          const scoreB = m._scoreB ?? 0;
-          const mvp = (m.mvp||[]).filter(Boolean);
-          const mvpStr = mvp.length ? mvp.map((pid,i)=> (i===0?"🥇":i===1?"🥈":"🥉") + " " + escapeHtml(playerName(pid))).join(" · ") : "—";
-
-          const goalsStr = (m.goals||[]).length
-            ? (m.goals||[]).map(g => {
-                const a = g.assistId ? ` (A: ${escapeHtml(playerName(g.assistId))})` : "";
-                return `• ${escapeHtml(playerName(g.scorerId))}${a}`;
-              }).join("<br/>")
-            : `<span class="mini">Sin goles cargados.</span>`;
-
-          return `
-            <details class="details" style="margin-bottom:10px;">
-              <summary>
-                <span style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                  <span><b>${fmtDate(m.date)}</b> · A <b>${scoreA}</b> — <b>${scoreB}</b> B</span>
-                  <span class="mini">click para ver</span>
-                </span>
-              </summary>
-
-              <div class="hr"></div>
-
-              <div class="row">
-                <div class="col">
-                  <div class="h2">Equipo A</div>
-                  <div class="mini">${(m.teamA||[]).map(pid=>escapeHtml(playerName(pid))).join(" · ") || "—"}</div>
-                </div>
-                <div class="col">
-                  <div class="h2">Equipo B</div>
-                  <div class="mini">${(m.teamB||[]).map(pid=>escapeHtml(playerName(pid))).join(" · ") || "—"}</div>
-                </div>
-              </div>
-
-              <div class="hr"></div>
-
-              <div class="row">
-                <div class="col">
-                  <div class="h2">Goles</div>
-                  <div class="mini">${goalsStr}</div>
-                </div>
-                <div class="col">
-                  <div class="h2">Figuras</div>
-                  <div class="mini">${mvpStr}</div>
-                </div>
-              </div>
-
-              <div class="hr"></div>
-
-              <div class="row" style="justify-content:flex-end;">
-                <button class="btn btn-danger" data-del-match="${m.id}">Eliminar partido</button>
-              </div>
-            </details>
-          `;
-        }).join("") : `<div class="mini">Todavía no hay partidos. En “Nuevo partido” empieza la magia.</div>`}
-      </div>
+    <div id="matchesWrap">
+      ${list.length ? list.map(m => renderMatchCard(m)).join("") : `<div class="mini">Todavía no hay partidos. Andá a “Nuevo partido”.</div>`}
     </div>
   `;
 
+  // handlers (delegated)
   el.onclick = async (e) => {
-    const btn = e.target.closest("[data-del-match]");
-    if (!btn) return;
-    const id = btn.dataset.delMatch;
-    if (!confirm("¿Eliminar este partido?")) return;
-    state.data.matches = state.data.matches.filter(m => m.id !== id);
-    state.data.updatedAt = new Date().toISOString();
-    await persist("Partido eliminado");
+    const btnDel = e.target.closest("[data-del-match]");
+    if (btnDel){
+      const id = btnDel.dataset.delMatch;
+      if (!confirm("¿Eliminar este partido?")) return;
+      state.data.matches = state.data.matches.filter(m => m.id !== id);
+      await persist("Partido eliminado");
+      return;
+    }
+
+    const btnToggle = e.target.closest("[data-toggle-detail]");
+    if (btnToggle){
+      const id = btnToggle.dataset.toggleDetail;
+      if (state.ui.expandedMatches.has(id)) state.ui.expandedMatches.delete(id);
+      else state.ui.expandedMatches.add(id);
+      renderMatches();
+      return;
+    }
+
+    const btnVote = e.target.closest("[data-vote]");
+    if (btnVote){
+      const id = btnVote.dataset.vote;
+      const m = state.data.matches.find(x => x.id === id);
+      if (!m) return;
+      openVoteModal(m);
+      return;
+    }
+
+    const pbtn = e.target.closest("[data-edit-player]");
+    if (pbtn){
+      const matchId = pbtn.dataset.matchId;
+      const pid = pbtn.dataset.editPlayer;
+      const m = state.data.matches.find(x => x.id === matchId);
+      if (!m) return;
+      openPlayerStatModal(m, pid);
+      return;
+    }
   };
+
+  function renderMatchCard(m){
+    const expanded = state.ui.expandedMatches.has(m.id);
+    const { a, b } = computeMatchScore(m);
+    const tally = computeMatchVoteTally(m);
+
+    const renderTeam = (ids) => {
+      if (!ids.length) return `<div class="mini">—</div>`;
+      return ids.map(pid => {
+        const ps = m.playerStats?.[pid] || { goals:0, assists:0 };
+        const g = clampInt(ps.goals);
+        const a = clampInt(ps.assists);
+        const balls = g <= 6 ? "⚽".repeat(g) : `⚽×${g}`;
+        const boots = a <= 6 ? "🥾".repeat(a) : `🥾×${a}`;
+
+        const pts = tally.points[pid] || 0;
+        const votes = tally.pickedCount[pid] || 0;
+        const hasVotes = votes > 0;
+
+        return `
+          <button class="player-row ${hasVotes ? "has-votes" : ""}"
+            data-edit-player="${pid}" data-match-id="${m.id}" title="Cargar goles/asistencias">
+            <span class="name">${escapeHtml(playerName(pid))}${hasVotes ? `<span class="icon-pill">⭐ ${pts}</span>` : ""}</span>
+            <span class="icons">
+              ${g ? `<span class="icon-pill">${balls}</span>` : ""}
+              ${a ? `<span class="icon-pill">${boots}</span>` : ""}
+            </span>
+          </button>
+        `;
+      }).join("");
+    };
+
+    const votesCount = (m.mvpVotes || []).length;
+
+    // detail votes table
+    const votesTable = votesCount ? `
+      <table class="table" style="margin-top:8px;">
+        <thead><tr><th>Votante</th><th>🥇</th><th>🥈</th><th>🥉</th></tr></thead>
+        <tbody>
+          ${(m.mvpVotes||[]).slice().reverse().map(v => `
+            <tr>
+              <td><b>${escapeHtml(v.voter)}</b></td>
+              <td>${v.picks?.[0] ? escapeHtml(playerName(v.picks[0])) : "—"}</td>
+              <td>${v.picks?.[1] ? escapeHtml(playerName(v.picks[1])) : "—"}</td>
+              <td>${v.picks?.[2] ? escapeHtml(playerName(v.picks[2])) : "—"}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    ` : `<div class="mini" style="margin-top:8px;">Todavía nadie votó figuras.</div>`;
+
+    return `
+      <div class="match-card">
+        <div class="match-header">
+          <div>
+            <div class="scoreline">
+              ${fmtDate(m.date)} · A <span class="big">${a}</span> — <span class="big">${b}</span> B
+            </div>
+            <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · Votos: ${votesCount}</div>
+          </div>
+          <div class="row" style="gap:8px; justify-content:flex-end;">
+            <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar figuras</button>
+            <button class="btn btn-small" data-toggle-detail="${m.id}">${expanded ? "Ocultar detalle" : "Detalle"}</button>
+            <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
+          </div>
+        </div>
+
+        <div class="teams-split">
+          <div class="team-box">
+            <div class="team-title"><span>Equipo A</span><b>${a}</b></div>
+            ${renderTeam(m.teamA || [])}
+          </div>
+          <div class="team-box">
+            <div class="team-title"><span>Equipo B</span><b>${b}</b></div>
+            ${renderTeam(m.teamB || [])}
+          </div>
+        </div>
+
+        ${expanded ? `
+          <div class="detail-box">
+            <div class="h2">Detalle de votos</div>
+            ${votesTable}
+          </div>
+        ` : ``}
+      </div>
+    `;
+  }
+
+  function openPlayerStatModal(match, pid){
+    const current = match.playerStats?.[pid] || { goals:0, assists:0 };
+
+    const modal = document.createElement("div");
+    modal.className = "overlay";
+    modal.innerHTML = `
+      <div class="card" style="width:min(720px,92vw); padding:16px; border-radius:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div>
+            <div class="h1" style="margin:0;">${escapeHtml(playerName(pid))}</div>
+            <div class="mini">Partido ${fmtDate(match.date)} · Editá goles y asistencias</div>
+          </div>
+          <button class="btn" id="close">Cerrar</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="align-items:end;">
+          <div class="col">
+            <div class="h2">Goles (⚽)</div>
+            <input class="input" type="number" min="0" id="goals" value="${clampInt(current.goals)}" />
+          </div>
+          <div class="col">
+            <div class="h2">Asistencias (🥾)</div>
+            <input class="input" type="number" min="0" id="assists" value="${clampInt(current.assists)}" />
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="justify-content:flex-end;">
+          <button class="btn btn-primary" id="save">Guardar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    $("#close", modal).onclick = () => modal.remove();
+    $("#save", modal).onclick = async () => {
+      const g = clampInt($("#goals", modal).value);
+      const a = clampInt($("#assists", modal).value);
+
+      match.playerStats = match.playerStats || {};
+      match.playerStats[pid] = { goals: g, assists: a };
+
+      modal.remove();
+      await persist("Actualizado");
+    };
+  }
+
+  function openVoteModal(match){
+    const participants = [...new Set([...(match.teamA||[]), ...(match.teamB||[])])];
+    if (participants.length < 2) return toast("Este partido no tiene suficientes jugadores.");
+
+    const opts = participants
+      .map(pid => `<option value="${pid}">${escapeHtml(playerName(pid))}</option>`)
+      .join("");
+
+    const modal = document.createElement("div");
+    modal.className = "overlay";
+    modal.innerHTML = `
+      <div class="card" style="width:min(820px,92vw); padding:16px; border-radius:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div>
+            <div class="h1" style="margin:0;">Votar figuras</div>
+            <div class="mini">${fmtDate(match.date)} · Cada votante suma puntos 3-2-1</div>
+          </div>
+          <button class="btn" id="close">Cerrar</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="h2">Tu nombre</div>
+        <input class="input" id="voter" placeholder="Ej: Nico" maxlength="40" />
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div class="col">
+            <div class="h2">🥇 Primera figura</div>
+            <select class="select" id="p1"><option value="">Elegí…</option>${opts}</select>
+          </div>
+          <div class="col">
+            <div class="h2">🥈 Segunda figura</div>
+            <select class="select" id="p2"><option value="">Elegí…</option>${opts}</select>
+          </div>
+          <div class="col">
+            <div class="h2">🥉 Tercera figura</div>
+            <select class="select" id="p3"><option value="">Elegí…</option>${opts}</select>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="justify-content:flex-end;">
+          <button class="btn btn-primary" id="save">Guardar voto</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    $("#close", modal).onclick = () => modal.remove();
+
+    $("#save", modal).onclick = async () => {
+      const voter = ($("#voter", modal).value || "").trim();
+      if (!voter) return toast("Poné tu nombre para votar.");
+
+      const p1 = $("#p1", modal).value || null;
+      const p2 = $("#p2", modal).value || null;
+      const p3 = $("#p3", modal).value || null;
+
+      const picks = [p1,p2,p3].filter(Boolean);
+      const uniq = new Set(picks);
+      if (picks.length && uniq.size !== picks.length) return toast("Las figuras deben ser distintas.");
+
+      match.mvpVotes = match.mvpVotes || [];
+      match.mvpVotes.push({
+        voter,
+        picks: [p1,p2,p3],
+        createdAt: new Date().toISOString()
+      });
+
+      modal.remove();
+      await persist("Voto guardado");
+    };
+  }
 }
 
+/* ============================
+   LEADERBOARD VIEW (dejamos rankings)
+   ============================ */
 function renderLeaderboard(){
   const el = $("#viewLeaderboard");
   const s = state.stats;
@@ -844,7 +903,7 @@ function renderLeaderboard(){
       </tr>
     `).join("");
     return `
-      <div class="cardlet">
+      <div class="match-card" style="margin-bottom:12px;">
         <div class="h2">${title}</div>
         <table class="table" style="margin-top:8px;">
           <thead><tr><th>#</th><th>Jugador</th><th>Principal</th><th>Extra</th></tr></thead>
@@ -855,25 +914,20 @@ function renderLeaderboard(){
   }
 
   el.innerHTML = `
-    <div class="row">
-      <div class="col">
-        <div class="h1">Rankings</div>
-        <div class="p">Para cuando alguien diga “yo la rompí todo el año”. Acá queda registrado.</div>
+    <div class="h1">Rankings</div>
+    <div class="p">Para cerrar discusiones en 2 segundos.</div>
 
-        <div class="grid">
-          ${topTable("Goleadores", s.byGoals, p=> `${p.goals} G`, p=> `${p.assists} A`)}
-          ${topTable("Asistidores", s.byAssists, p=> `${p.assists} A`, p=> `${p.goals} G`)}
-          ${topTable("MVP", s.byMvp, p=> `${p.mvpPoints} pts`, p=> `🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}`)}
-        </div>
-      </div>
-    </div>
+    ${topTable("Goleadores", s.byGoals, p=> `${p.goals} G`, p=> `${p.assists} A`)}
+    ${topTable("Asistidores", s.byAssists, p=> `${p.assists} A`, p=> `${p.goals} G`)}
+    ${topTable("MVP", s.byMvp, p=> `${p.mvpPoints} pts`, p=> `🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}`)}
   `;
 }
 
+/* ============================
+   RENDER ROUTER
+   ============================ */
 function renderAll(){
-  // Recompute stats every time (fast enough for a friends app)
   state.stats = computeStats(state.data);
-
   const active = $(".tab.is-active")?.dataset?.view || "players";
   if (active === "players") renderPlayers();
   if (active === "newMatch") renderNewMatch();
@@ -882,28 +936,31 @@ function renderAll(){
 }
 
 /* ============================
-   PERSIST
+   UI WIRING
    ============================ */
-async function persist(msg){
-  try{
-    overlay(true, "Guardando…");
-    state.data.updatedAt = new Date().toISOString();
-    saveLocal(state.data);
-    await saveRemote(state.data);
-    toast(msg + " ✅ (Sync OK)");
-  }catch(err){
-    console.error(err);
-    saveLocal(state.data);
-    toast(msg + " ⚠️ (Quedó en tu navegador; Sync falló)");
-  }finally{
-    overlay(false);
-    state.stats = computeStats(state.data);
-    renderAll();
-  }
+function wireUI(){
+  $$(".tab[data-view]").forEach(btn => btn.onclick = () => setView(btn.dataset.view));
+
+  $("#btnSync").onclick = async () => {
+    try{
+      overlay(true, "Sincronizando…");
+      saveLocal(state.data);
+      await saveRemote(state.data);
+      toast("Sync OK ✅");
+    }catch(err){
+      console.error(err);
+      toast("Sync falló ⚠️");
+    }finally{
+      overlay(false);
+    }
+  };
 }
 
+/* ============================
+   BOOT
+   ============================ */
 async function initialLoad(){
-  overlay(true, "Cargando desde JSONBin…");
+  overlay(true, "Cargando…");
   try{
     const remote = await loadRemote();
     state.data = sanitizeData(remote);
@@ -922,79 +979,12 @@ async function initialLoad(){
   }finally{
     overlay(false);
     state.stats = computeStats(state.data);
-    renderAll();
+
+    // flujo sugerido: si no hay partidos → Nuevo Partido, si hay → Partidos
+    if ((state.data.matches || []).length === 0) setView("newMatch");
+    else setView("matches");
   }
 }
 
-/* ============================
-   SANITIZE + SECURITY (basic)
-   ============================ */
-function sanitizeData(d){
-  const base = defaultData();
-  if (!d || typeof d !== "object") return base;
-
-  const out = {
-    version: 1,
-    players: Array.isArray(d.players) ? d.players.filter(p => p && p.id && p.name) : [],
-    matches: Array.isArray(d.matches) ? d.matches.filter(m => m && m.id && m.date) : [],
-    updatedAt: d.updatedAt || new Date().toISOString()
-  };
-
-  // ensure arrays
-  for (const m of out.matches){
-    m.teamA = Array.isArray(m.teamA) ? m.teamA : [];
-    m.teamB = Array.isArray(m.teamB) ? m.teamB : [];
-    m.goals = Array.isArray(m.goals) ? m.goals : [];
-    m.mvp = Array.isArray(m.mvp) ? m.mvp : [null,null,null];
-
-    // normalize goals
-    m.goals = m.goals
-      .map(g => ({
-        scorerId: g?.scorerId || null,
-        assistId: g?.assistId || null,
-        at: g?.at || null
-      }))
-      .filter(g => !!g.scorerId);
-  }
-
-  return out;
-}
-
-function escapeHtml(str){
-  return String(str)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
-}
-
-/* ============================
-   UI WIRING
-   ============================ */
-function wireUI(){
-  $$(".tab[data-view]").forEach(btn => {
-    btn.onclick = () => setView(btn.dataset.view);
-  });
-
-  $("#btnSync").onclick = async () => {
-    try{
-      overlay(true, "Sincronizando…");
-      // push local to remote (source of truth: current state)
-      saveLocal(state.data);
-      await saveRemote(state.data);
-      toast("Sync OK ✅");
-    }catch(err){
-      console.error(err);
-      toast("Sync falló ⚠️");
-    }finally{
-      overlay(false);
-    }
-  };
-}
-
-/* ============================
-   BOOT
-   ============================ */
 wireUI();
 initialLoad();
