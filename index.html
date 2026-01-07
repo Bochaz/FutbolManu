@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fútbol Stats — GB</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-ball" aria-hidden="true">⚽</div>
+      <div>
+        <div class="brand-title">Fútbol Stats</div>
+        <div class="brand-sub">cargá el partido, no la excusa</div>
+      </div>
+    </div>
+
+    <nav class="tabs" aria-label="Secciones">
+      <button class="tab is-active" data-view="players">Jugadores</button>
+      <button class="tab" data-view="newMatch">Nuevo partido</button>
+      <button class="tab" data-view="matches">Partidos</button>
+      <button class="tab" data-view="leaderboard">Rankings</button>
+      <button class="tab tab-ghost" id="btnSync" title="Forzar sincronización">Sync</button>
+    </nav>
+  </header>
+
+  <main class="main">
+    <section class="card pitch" id="viewPlayers"></section>
+    <section class="card pitch hidden" id="viewNewMatch"></section>
+    <section class="card pitch hidden" id="viewMatches"></section>
+    <section class="card pitch hidden" id="viewLeaderboard"></section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="overlay hidden" id="overlay">
+    <div class="spinner"></div>
+    <div class="overlay-text" id="overlayText">Cargando…</div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
