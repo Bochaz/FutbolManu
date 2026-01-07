@@ -484,7 +484,7 @@ function renderNewMatch(){
 
   el.innerHTML = `
     <div class="h1">Nuevo partido</div>
-    <div class="p">Primero armás fecha + equipos. Los goles/asistencias/votos se cargan después en “Partidos”.</div>
+    <div class="p">Armá fecha + equipos. Los goles/asistencias/votos se cargan después en “Partidos”.</div>
 
     <div class="row" style="align-items:end;">
       <div style="flex:1; min-width:260px;">
@@ -624,7 +624,7 @@ function renderMatches(){
 
   el.innerHTML = `
     <div class="h1">Partidos</div>
-    <div class="p">Resultado arriba, equipos abajo. Click en un jugador para cargar ⚽ y 🥾. Votación de figuras con nombre.</div>
+    <div class="p">Resultado arriba, equipos abajo. Click en un jugador para cargar goles/asistencias. Votación con nombre.</div>
 
     <div id="matchesWrap">
       ${list.length ? list.map(m => renderMatchCard(m)).join("") : `<div class="mini">Todavía no hay partidos. Andá a “Nuevo partido”.</div>`}
@@ -681,9 +681,7 @@ function renderMatches(){
       return ids.map(pid => {
         const ps = m.playerStats?.[pid] || { goals:0, assists:0 };
         const g = clampInt(ps.goals);
-        const a = clampInt(ps.assists);
-        const balls = g <= 6 ? "⚽".repeat(g) : `⚽×${g}`;
-        const boots = a <= 6 ? "🥾".repeat(a) : `🥾×${a}`;
+        const as = clampInt(ps.assists);
 
         const pts = tally.points[pid] || 0;
         const votes = tally.pickedCount[pid] || 0;
@@ -691,11 +689,14 @@ function renderMatches(){
 
         return `
           <button class="player-row ${hasVotes ? "has-votes" : ""}"
-            data-edit-player="${pid}" data-match-id="${m.id}" title="Cargar goles/asistencias">
-            <span class="name">${escapeHtml(playerName(pid))}${hasVotes ? `<span class="icon-pill">⭐ ${pts}</span>` : ""}</span>
+            data-edit-player="${pid}" data-match-id="${m.id}" title="Editar goles/asistencias">
+            <span class="name">
+              <b>${escapeHtml(playerName(pid))}</b>
+              ${hasVotes ? `<span class="icon-pill">⭐ ${pts}</span>` : ""}
+            </span>
             <span class="icons">
-              ${g ? `<span class="icon-pill">${balls}</span>` : ""}
-              ${a ? `<span class="icon-pill">${boots}</span>` : ""}
+              ${g ? `<span class="icon-pill">G ${g}</span>` : ""}
+              ${as ? `<span class="icon-pill">A ${as}</span>` : ""}
             </span>
           </button>
         `;
@@ -777,11 +778,11 @@ function renderMatches(){
 
         <div class="row" style="align-items:end;">
           <div class="col">
-            <div class="h2">Goles (⚽)</div>
+            <div class="h2">Goles</div>
             <input class="input" type="number" min="0" id="goals" value="${clampInt(current.goals)}" />
           </div>
           <div class="col">
-            <div class="h2">Asistencias (🥾)</div>
+            <div class="h2">Asistencias</div>
             <input class="input" type="number" min="0" id="assists" value="${clampInt(current.assists)}" />
           </div>
         </div>
@@ -823,7 +824,7 @@ function renderMatches(){
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
           <div>
             <div class="h1" style="margin:0;">Votar figuras</div>
-            <div class="mini">${fmtDate(match.date)} · Cada votante suma puntos 3-2-1</div>
+            <div class="mini">${fmtDate(match.date)} · Suma puntos 3-2-1</div>
           </div>
           <button class="btn" id="close">Cerrar</button>
         </div>
@@ -887,7 +888,7 @@ function renderMatches(){
 }
 
 /* ============================
-   LEADERBOARD VIEW (dejamos rankings)
+   LEADERBOARD VIEW
    ============================ */
 function renderLeaderboard(){
   const el = $("#viewLeaderboard");
@@ -915,7 +916,7 @@ function renderLeaderboard(){
 
   el.innerHTML = `
     <div class="h1">Rankings</div>
-    <div class="p">Para cerrar discusiones en 2 segundos.</div>
+    <div class="p">Goles, asistencias y MVP (por votación).</div>
 
     ${topTable("Goleadores", s.byGoals, p=> `${p.goals} G`, p=> `${p.assists} A`)}
     ${topTable("Asistidores", s.byAssists, p=> `${p.assists} A`, p=> `${p.goals} G`)}

@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Fútbol Stats — GB</title>
+  <title>Match Tracker</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="logo-ball" aria-hidden="true">⚽</div>
+      <div class="logo-mark" aria-hidden="true">MT</div>
       <div>
-        <div class="brand-title">Fútbol Stats</div>
-        <div class="brand-sub">cargá el partido, no la excusa</div>
+        <div class="brand-title">Match Tracker</div>
+        <div class="brand-sub">partidos, stats y votaciones</div>
       </div>
     </div>
 
@@ -27,10 +27,10 @@
   </header>
 
   <main class="main">
-    <section class="card pitch" id="viewPlayers"></section>
-    <section class="card pitch hidden" id="viewNewMatch"></section>
-    <section class="card pitch hidden" id="viewMatches"></section>
-    <section class="card pitch hidden" id="viewLeaderboard"></section>
+    <section class="card hidden" id="viewPlayers"></section>
+    <section class="card hidden" id="viewNewMatch"></section>
+    <section class="card hidden" id="viewMatches"></section>
+    <section class="card hidden" id="viewLeaderboard"></section>
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
