@@ -499,7 +499,7 @@ function renderNewMatch(){
 
     const chips = ids.map((pid, i) => {
       const over = i >= max;
-      return `<span class="player-chip ${over ? "slot-over" : ""}" draggable="true" data-player-id="${pid}" data-team="${team}">${escapeHtml(playerName(pid))}</span>`;
+      return `<div class="player-chip ${over ? "slot-over" : ""}" draggable="true" data-player-id="${pid}" data-team="${team}"><span class="grab">⋮⋮</span><span class="pname">${escapeHtml(playerName(pid))}</span></div>`;
     }).join(" ");
 
     const empties = Array.from({length: missing}).map(()=> `<span class="slot-empty">Vacío</span>`).join("");
@@ -510,7 +510,7 @@ function renderNewMatch(){
           <div class="teamTag ${zoneClass}">${label}</div>
           <div class="teamTag ${zoneClass}">${ids.length} / ${max}</div>
         </div>
-        <div class="dropzone ${zoneClass} ${statusClass}" data-zone="${team}">
+        <div class="dropzone teamlist ${zoneClass} ${statusClass}" data-zone="${team}">
           ${chips} ${empties}
         </div>
         <div class="team-status ${statusTone}">${statusText}</div>
@@ -617,13 +617,13 @@ function renderNewMatch(){
   function setupNewMatchInteractions(){
     const root = $("#viewNewMatch");
 
-    root.addEventListener("click", (e) => {
+    root.onclick = (e) => {
       const item = e.target.closest("[data-player-id]");
       if (!item) return;
       const pid = item.dataset.playerId;
       toggleAssignment(pid);
       renderNewMatch();
-    }, { once:true });
+    };
 
     $$("[draggable='true'][data-player-id]", root).forEach(node => {
       node.addEventListener("dragstart", (e) => {

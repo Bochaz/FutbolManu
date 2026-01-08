@@ -1,4 +1,6 @@
 :root{
+  color-scheme: dark;
+
   --bg0:#0b1020;
   --bg1:#0e1630;
   --text:#eef2ff;
@@ -97,10 +99,13 @@ body{
 .h2{ font-size:12px; font-weight:950; color:var(--muted); margin:0 0 8px; text-transform:uppercase; letter-spacing:.8px; }
 
 .input, .select{
+  appearance: none;
+  -webkit-appearance: none;
+
   width:100%;
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,.12);
-  background: rgba(255,255,255,.06);
+  background: rgba(18,21,39,.92);
   color: var(--text);
   padding: 10px 12px;
   outline:none;
@@ -114,7 +119,7 @@ body{
   cursor:pointer;
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,.12);
-  background: rgba(255,255,255,.06);
+  background: rgba(18,21,39,.92);
   color: var(--text);
   padding: 10px 12px;
   font-weight:950;
@@ -483,3 +488,34 @@ body{
 
 
 .newmatch-right{ display:flex; flex-direction:column; gap:10px; align-self:start; }
+
+
+.select option{
+  background: rgba(18,21,39,.98);
+  color: var(--text);
+}
+
+
+/* Team list layout (Nuevo Partido) */
+.dropzone.teamlist{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:stretch;
+}
+.player-chip{
+  width:100%;
+  border-radius: 12px;
+  justify-content:flex-start;
+}
+.player-chip .grab{
+  opacity:.55;
+  font-weight: 1100;
+  margin-right: 8px;
+}
+.player-chip .pname{ flex:1; }
+.slot-empty{
+  width:100%;
+  justify-content:space-between;
+  border-radius: 12px;
+}
