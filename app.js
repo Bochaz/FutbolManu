@@ -138,10 +138,10 @@ function sanitizeData(d){
     // playersPerTeam (format: 5v5 .. 8v8)
     if (m.playersPerTeam === undefined || m.playersPerTeam === null){
       const guess = Math.max(m.teamA.length, m.teamB.length);
-      m.playersPerTeam = (guess >= 5 && guess <= 8) ? guess : 5;
+      m.playersPerTeam = (guess >= 5 && guess <= 8) ? guess : 7;
     } else {
       m.playersPerTeam = clampInt(m.playersPerTeam);
-      if (m.playersPerTeam < 5 || m.playersPerTeam > 8) m.playersPerTeam = 5;
+      if (m.playersPerTeam < 5 || m.playersPerTeam > 8) m.playersPerTeam = 7;
     }
     m.createdAt = m.createdAt || new Date().toISOString();
 
@@ -464,13 +464,13 @@ function renderNewMatch(){
     if (state.editingMatchId){
       const m = state.data.matches.find(x => x.id === state.editingMatchId);
       state.draft = m ? { id:m.id, date:m.date, playersPerTeam: m.playersPerTeam || 5, activeTeam: 'A', teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||new Date().toISOString() }
-                      : { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 5, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
+                      : { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
     } else {
-      state.draft = { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 5, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
+      state.draft = { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
     }
   }
   const d = state.draft;
-  if (!d.playersPerTeam) d.playersPerTeam = 5;
+  if (!d.playersPerTeam) d.playersPerTeam = 7;
   if (!d.activeTeam) d.activeTeam = 'A';
   const isEdit = !!state.editingMatchId;
 
@@ -545,6 +545,10 @@ function renderNewMatch(){
     <div class="hr"></div>
 
     <div class="newmatch-layout">
+      <div class="team-select nm-team-select">
+
+        <div class="h2" style="margin:0;">Cargando en</div>
+
       <div class="panel">
         <div class="h2">Jugadores</div>
         <input class="input" id="nmSearch" placeholder="Buscar…" />
@@ -553,14 +557,6 @@ function renderNewMatch(){
       </div>
 
       <div class="newmatch-right">
-      <div class="team-select">
-        <div class="h2" style="margin:0;">Cargando en</div>
-        <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
-        <button class="team-toggle teamB ${d.activeTeam==='B' ? 'is-active' : ''}" id="selTeamB">Equipo B</button>
-      </div>
-
-      <div style="height:10px;"></div>
-
       <div class="teams-right">
         ${teamZone("A")}
         ${teamZone("B")}

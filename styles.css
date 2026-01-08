@@ -52,7 +52,7 @@ body{
 .brand-title{ font-weight:950; letter-spacing:.2px; }
 .brand-sub{ color:var(--muted); font-size:12px; margin-top:2px; }
 
-.tabs{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.tabs{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-start; }
 .tab{
   cursor:pointer;
   border-radius: 999px;
@@ -437,7 +437,7 @@ body{
   display:flex;
   gap:8px;
   align-items:center;
-  justify-content:flex-end;
+  justify-content:flex-start;
   flex-wrap: wrap;
 }
 .team-toggle{
@@ -518,4 +518,58 @@ body{
   width:100%;
   justify-content:space-between;
   border-radius: 12px;
+}
+
+
+/* Nuevo Partido: selector de equipo ocupa toda la fila */
+.nm-team-select{
+  grid-column: 1 / -1;
+  margin-bottom: 8px;
+}
+
+
+/* Fix contraste select (iOS / mobile) */
+select.select{
+  background-color: rgba(18,21,39,.92) !important;
+  color: var(--text) !important;
+  -webkit-text-fill-color: var(--text) !important;
+}
+select.select option{
+  background-color: rgba(18,21,39,.98) !important;
+  color: var(--text) !important;
+}
+
+
+@media (max-width: 720px){
+  .topbar{ padding: 10px 12px; }
+  .brand-sub{ display:none; }
+  .tabs{
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+  }
+  .tab{ white-space: nowrap; padding: 9px 11px; font-size: 12px; }
+  .main{ margin: 10px auto 70px; padding: 0 10px; }
+  .card{ padding: 12px; }
+  .btn{ padding: 10px 12px; }
+  .btn-small{ padding: 8px 10px; }
+
+  /* Nuevo Partido */
+  .newmatch-layout{ grid-template-columns: 1fr; gap: 12px; }
+  .teams-right{ grid-template-columns: 1fr; gap: 12px; }
+  .nm-team-select{ margin-bottom: 4px; }
+  .team-toggle{ padding: 10px 12px; }
+  .player-list{ max-height: 46vh; overflow:auto; }
+  .dropzone.teamlist{ max-height: 34vh; overflow:auto; }
+  .input, .select{ font-size: 15px; }
+
+  /* Partidos */
+  .match-header{ flex-direction: column; align-items: stretch; gap: 10px; }
+  .scoreline{ font-size: 16px; }
+  .table{ display:block; overflow-x:auto; }
+  .table th, .table td{ padding: 8px 8px; }
+
+  /* Jugadores */
+  .table{ border-radius: 14px; }
 }
