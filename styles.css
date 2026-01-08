@@ -10,6 +10,7 @@
 
   --danger:#ff5b75;
   --warning:#ffcc4a;
+  --win:#2fe57a;
   --shadow: 0 14px 40px rgba(0,0,0,.35);
   --radius: 16px;
 }
@@ -286,6 +287,7 @@ body{
 
 /* Partidos */
 .match-card{
+  cursor: pointer;
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.03);
@@ -379,3 +381,28 @@ body{
   background: rgba(255,255,255,.02);
   padding: 10px;
 }
+
+
+/* Winner highlight */
+.winner-pill{
+  background: rgba(47,229,122,.14) !important;
+  border-color: rgba(47,229,122,.35) !important;
+}
+.team-box.winner{
+  background: rgba(47,229,122,.06) !important;
+  border-color: rgba(47,229,122,.22) !important;
+}
+
+/* Player rows: nicer contrast */
+.player-row{ color: var(--text); }
+.team-box.teamA .player-row{
+  border-color: rgba(124,92,255,.22);
+  background: linear-gradient(180deg, rgba(124,92,255,.10), rgba(255,255,255,.02));
+}
+.team-box.teamB .player-row{
+  border-color: rgba(37,198,216,.18);
+  background: linear-gradient(180deg, rgba(37,198,216,.08), rgba(255,255,255,.02));
+}
+.team-box.teamA .player-row:hover{ box-shadow: 0 0 0 4px rgba(124,92,255,.14); }
+.team-box.teamB .player-row:hover{ box-shadow: 0 0 0 4px rgba(37,198,216,.12); }
+.player-row b{ color: rgba(238,242,255,.98); letter-spacing:.1px; }

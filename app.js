@@ -305,6 +305,45 @@ function normalizeMatchAfterEdit(m){
   m.mvpVotes = m.mvpVotes.map(v => ({ ...v, picks: (v.picks||[]).map(pid => (pid && participants.has(pid)) ? pid : null) }));
 }
 
+function openRenamePlayerModal(player){
+  const modal = document.createElement("div");
+  modal.className = "overlay";
+  modal.innerHTML = `
+    <div class="card" style="width:min(720px,92vw); padding:16px; border-radius:18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div><div class="h1" style="margin:0;">Editar jugador</div></div>
+        <button class="btn" id="close">Cerrar</button>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="h2">Nombre</div>
+      <input class="input" id="name" maxlength="50" value="${escapeHtml(player.name)}" />
+
+      <div class="hr"></div>
+
+      <div class="row" style="justify-content:flex-end;">
+        <button class="btn btn-primary" id="save">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  $("#close", modal).onclick = () => modal.remove();
+  $("#save", modal).onclick = async () => {
+    const name = ($("#name", modal).value || "").trim();
+    if (!name) return toast("Nombre requerido");
+    if (state.data.players.some(p => p.id !== player.id && p.name.toLowerCase() === name.toLowerCase())){
+      return toast("Ya existe");
+    }
+    const p = state.data.players.find(x => x.id === player.id);
+    if (p) p.name = name;
+    modal.remove();
+    await persist("Jugador actualizado");
+  };
+}
+
+
 /* ============================
    PLAYERS
    ============================ */
@@ -364,7 +403,7 @@ function renderPlayers(){
       <td>${s.mvpPoints}</td>
       <td>${s.wins}-${s.draws}-${s.losses}</td>
       <td>${s.gf}/${s.ga}</td>
-      <td><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
+      <td class="row" style="gap:8px; justify-content:flex-end;"><button class="btn btn-small" data-rename-player="${p.id}">Editar</button><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
     </tr>
   `).join("") : `<tr><td colspan="8">Sin jugadores</td></tr>`;
 
@@ -380,6 +419,15 @@ function renderPlayers(){
   $("#playerSearch").oninput = () => renderPlayers();
 
   el.onclick = async (e) => {
+    const ren = e.target.closest("[data-rename-player]");
+    if (ren){
+      const pid = ren.dataset.renamePlayer;
+      const current = state.data.players.find(p=>p.id===pid);
+      if (!current) return;
+      openRenamePlayerModal(current);
+      return;
+    }
+
     const btn = e.target.closest("[data-del-player]");
     if (!btn) return;
     const pid = btn.dataset.delPlayer;
@@ -564,6 +612,11 @@ function renderNewMatch(){
 /* ============================
    MATCHES (collapse + edit)
    ============================ */
+function isInteractiveTarget(target){
+  return !!(target.closest("button, a, input, select, textarea, label, [role='button']") ||
+            target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player]"));
+}
+
 function renderMatches(){
   const el = $("#viewMatches");
   const list = state.data.matches.slice().sort(sortMatchesDesc);
@@ -630,6 +683,16 @@ function renderMatches(){
       const m = state.data.matches.find(x => x.id === matchId);
       if (!m) return;
       openPlayerStatModal(m, pid);
+
+    // Click on the card itself toggles expand/collapse (but not when clicking on controls)
+    const card = e.target.closest("[data-card-match]");
+    if (card && !isInteractiveTarget(e.target)){
+      const id = card.dataset.cardMatch;
+      if (state.ui.expandedMatches.has(id)) state.ui.expandedMatches.delete(id);
+      else state.ui.expandedMatches.add(id);
+      renderMatches();
+      return;
+    }
       return;
     }
   };
@@ -639,15 +702,16 @@ function renderMatches(){
     const showVotes = state.ui.expandedVotes.has(m.id);
     const { a, b } = computeMatchScore(m);
     const tally = computeMatchVoteTally(m);
+    const winner = a === b ? null : (a > b ? 'A' : 'B');
     const votesCount = (m.mvpVotes || []).length;
 
     if (!expanded){
       return `
-        <div class="match-card">
+        <div class="match-card" data-card-match="${m.id}">
           <div class="match-header">
             <div>
               <div class="scoreline">
-                ${fmtDate(m.date)} · A <span class="big teamA">${a}</span> — <span class="big teamB">${b}</span> B
+                ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
               </div>
               <div class="match-meta">Votos: ${votesCount}</div>
             </div>
@@ -701,11 +765,11 @@ function renderMatches(){
     ` : ``;
 
     return `
-      <div class="match-card">
+      <div class="match-card" data-card-match="${m.id}">
         <div class="match-header">
           <div>
             <div class="scoreline">
-              ${fmtDate(m.date)} · A <span class="big teamA">${a}</span> — <span class="big teamB">${b}</span> B
+              ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
             </div>
             <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · Votos: ${votesCount}</div>
           </div>
@@ -719,11 +783,11 @@ function renderMatches(){
         </div>
 
         <div class="teams-split">
-          <div class="team-box teamA">
+          <div class="team-box teamA ${winner==='A' ? 'winner' : ''}">
             <div class="team-title"><span>Equipo A</span><b>${a}</b></div>
             ${renderTeam(m.teamA || [])}
           </div>
-          <div class="team-box teamB">
+          <div class="team-box teamB ${winner==='B' ? 'winner' : ''}">
             <div class="team-title"><span>Equipo B</span><b>${b}</b></div>
             ${renderTeam(m.teamB || [])}
           </div>
