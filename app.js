@@ -954,7 +954,7 @@ function renderMatches(){
 
   function openVoteModal(match){
     const participants = [...new Set([...(match.teamA||[]), ...(match.teamB||[])])];
-    const voterOpts = participants.map(pid => `<option value=\"${pid}\">${escapeHtml(playerName(pid))}</option>`).join(\"\");
+    const voterOpts = participants.map(pid => `<option value="${pid}">${escapeHtml(playerName(pid))}</option>`).join("");
     if (participants.length < 2) return toast("Sin jugadores");
 
     const opts = participants.map(pid => `<option value="${pid}">${escapeHtml(playerName(pid))}</option>`).join("");
