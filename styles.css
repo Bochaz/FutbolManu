@@ -261,8 +261,9 @@ body{
 /* Nuevo Partido layout */
 .newmatch-layout{
   display:grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: 360px 1fr 1fr;
   gap: 12px;
+  align-items: start;
 }
 @media (max-width: 900px){
   .newmatch-layout{ grid-template-columns: 1fr; }
@@ -498,6 +499,9 @@ body{
 
 /* Team list layout (Nuevo Partido) */
 .dropzone.teamlist{
+  max-height: 520px;
+  overflow:auto;
+
   display:flex;
   flex-direction:column;
   gap:8px;
@@ -561,7 +565,10 @@ select.select option{
   .nm-team-select{ margin-bottom: 4px; }
   .team-toggle{ padding: 10px 12px; }
   .player-list{ max-height: 46vh; overflow:auto; }
-  .dropzone.teamlist{ max-height: 34vh; overflow:auto; }
+  .dropzone.teamlist{
+  max-height: 520px;
+  overflow:auto;
+ max-height: 34vh; overflow:auto; }
   .input, .select{ font-size: 15px; }
 
   /* Partidos */

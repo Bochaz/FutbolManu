@@ -546,8 +546,10 @@ function renderNewMatch(){
 
     <div class="newmatch-layout">
       <div class="team-select nm-team-select">
-
         <div class="h2" style="margin:0;">Cargando en</div>
+        <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
+        <button class="team-toggle teamB ${d.activeTeam==='B' ? 'is-active' : ''}" id="selTeamB">Equipo B</button>
+      </div>
 
       <div class="panel">
         <div class="h2">Jugadores</div>
@@ -556,14 +558,9 @@ function renderNewMatch(){
         <div class="player-list" id="playerList">${listHtml}</div>
       </div>
 
-      <div class="newmatch-right">
-      <div class="teams-right">
-        ${teamZone("A")}
-        ${teamZone("B")}
-      </div>
-      </div>
-    </div>
-  `;
+      ${teamZone("A")}
+      ${teamZone("B")}
+    </div>`;
 
   $("#matchDate").onchange = (e) => { d.date = e.target.value; };
   $("#playersPerTeam").onchange = (e) => { d.playersPerTeam = clampInt(e.target.value); autoSwitchTeamIfNeeded(); renderNewMatch(); };
