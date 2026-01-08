@@ -175,16 +175,17 @@ function sanitizeData(d){
     }
 
     m.mvpVotes = m.mvpVotes
-      .filter(v => v && (
-        (typeof v.voterId === "string" && v.voterId.trim()) ||
-        (typeof v.voter === "string" && v.voter.trim())
-      ))
-      .map(v => ({
-        voterId: (typeof v.voterId === "string" && v.voterId.trim()) ? v.voterId.trim() : null,
-        voter: (typeof v.voter === "string" ? v.voter.trim().slice(0, 40) : ""),
-        picks: Array.isArray(v.picks) ? [v.picks[0]||null, v.picks[1]||null, v.picks[2]||null] : [null,null,null],
-        createdAt: v.createdAt || new Date().toISOString()
-      }));
+      .filter(v => v && (v.voterId || v.voter))
+      .map(v => {
+        const voterId = (typeof v.voterId === "string" && v.voterId.trim()) ? v.voterId.trim() : null;
+        const voter = (typeof v.voter === "string") ? v.voter.trim().slice(0, 40) : "";
+        return {
+          voterId,
+          voter,
+          picks: Array.isArray(v.picks) ? [v.picks[0]||null, v.picks[1]||null, v.picks[2]||null] : [null,null,null],
+          createdAt: v.createdAt || new Date().toISOString()
+        };
+      });
   }
 
   return out;
@@ -369,7 +370,7 @@ function renderPlayers(){
   el.innerHTML = `
     <div class="h1">Jugadores</div>
 
-    <div class="row" style="align-items:end;">
+    <div class="row players-toolbar" style="align-items:end;">
       <div style="flex:1; min-width:260px;">
         <div class="h2">Agregar</div>
         <input class="input" id="playerName" placeholder="Nombre" />
@@ -525,7 +526,7 @@ function renderNewMatch(){
   el.innerHTML = `
     <div class="h1">${isEdit ? "Editar partido" : "Nuevo partido"}</div>
 
-    <div class="row" style="align-items:end; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+    <div class="row nm-topbar" style="align-items:end; justify-content:space-between; flex-wrap:wrap; gap:10px;">
       <div style="flex:1; min-width:260px;">
         <div class="h2">Fecha</div>
         <input class="input" type="date" id="matchDate" value="${d.date}" />
@@ -541,8 +542,8 @@ function renderNewMatch(){
         </select>
       </div>
       <div class="row" style="gap:8px; justify-content:flex-end;">
-        ${isEdit ? `<button class="btn" id="btnCancelEdit">Cancelar</button>` : `<button class="btn" id="btnResetDraft">Reiniciar</button>`}
-        <button class="btn btn-primary" id="btnSaveMatch">${isEdit ? "Guardar cambios" : "Guardar partido"}</button>
+        ${isEdit ? `<button class="btn" id="btnCancelEdit">Cancelar</button>` : `<button class="btn" id="btnResetDraft"><span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span><span class="btn-label">Reiniciar</span></button>`}
+        <button class="btn btn-primary" id="btnSaveMatch"><span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V7l4-4h10l4 4v12a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v4h8"/></svg></span><span class="btn-label">${isEdit ? "Guardar cambios" : "Guardar partido"}</span></button>
       </div>
     </div>
 
@@ -953,6 +954,7 @@ function renderMatches(){
 
   function openVoteModal(match){
     const participants = [...new Set([...(match.teamA||[]), ...(match.teamB||[])])];
+    const voterOpts = participants.map(pid => `<option value=\"${pid}\">${escapeHtml(playerName(pid))}</option>`).join(\"\");
     if (participants.length < 2) return toast("Sin jugadores");
 
     const opts = participants.map(pid => `<option value="${pid}">${escapeHtml(playerName(pid))}</option>`).join("");
@@ -969,7 +971,7 @@ function renderMatches(){
         <div class="hr"></div>
 
         <div class="h2">Votante</div>
-        <select class="select" id="voterId"><option value="">Elegí jugador…</option>${opts}</select>
+        <select class="select" id="voterId"><option value="">Elegí jugador…</option>${voterOpts}</select>
 
         <div class="hr"></div>
 
@@ -990,8 +992,10 @@ function renderMatches(){
 
     $("#close", modal).onclick = () => modal.remove();
     $("#save", modal).onclick = async () => {
-      const voter = ($("#voter", modal).value || "").trim();
-      if (!voter) return toast("Nombre requerido");
+      const voterId = ($("#voterId", modal).value || "").trim();
+      if (!voterId) return toast("Elegí quién vota");
+      if (!participants.includes(voterId)) return toast("Votante inválido");
+
       const p1 = $("#p1", modal).value || null;
       const p2 = $("#p2", modal).value || null;
       const p3 = $("#p3", modal).value || null;
@@ -1002,20 +1006,10 @@ function renderMatches(){
 
       match.mvpVotes = match.mvpVotes || [];
 
-      const voterName = (playerName(voterId) || "").trim();
-      const voterNameKey = voterName.toLowerCase();
-      const existingIdx = match.mvpVotes.findIndex(v =>
-        (v && v.voterId === voterId) ||
-        (!v.voterId && (v.voter||"").trim().toLowerCase() === voterNameKey)
-      );
-
+      const existingIdx = match.mvpVotes.findIndex(v => v && v.voterId === voterId);
       const payload = { voterId, picks:[p1,p2,p3], createdAt:new Date().toISOString() };
-      if (existingIdx >= 0){
-        match.mvpVotes[existingIdx] = { ...match.mvpVotes[existingIdx], ...payload };
-        toast("Voto actualizado");
-      } else {
-        match.mvpVotes.push(payload);
-      }
+      if (existingIdx >= 0) match.mvpVotes[existingIdx] = payload;
+      else match.mvpVotes.push(payload);
 
       modal.remove();
       await persist("Voto guardado");

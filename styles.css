@@ -596,3 +596,81 @@ select.select option{
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+
+.btn-label{ display:inline; }
+
+.btn-ico{ display:none; }
+
+
+/* Mobile: compact headers + icon buttons */
+@media (max-width: 720px){
+  /* simplify background (quita tinte violeta raro en algunos móviles) */
+  body{
+    background: linear-gradient(180deg, var(--bg0), var(--bg1)) !important;
+  }
+
+  /* remove blur tint layers */
+  .topbar{ backdrop-filter:none !important; background: rgba(10,14,30,.92) !important; }
+  .overlay{ backdrop-filter:none !important; }
+
+  /* Nuevo Partido top row: 2 columns + buttons row */
+  .nm-topbar{
+    display:grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px !important;
+    align-items:end !important;
+  }
+  .nm-topbar > div:nth-child(1),
+  .nm-topbar > div:nth-child(2){
+    min-width: 0 !important;
+  }
+  .nm-topbar > div:nth-child(3){
+    grid-column: 1 / -1;
+    justify-content:flex-end !important;
+  }
+  .nm-topbar .h2{ font-size: 12px; margin-bottom: 4px; }
+  #matchDate, #playersPerTeam{ padding: 10px 10px; font-size: 15px; }
+
+  /* icon buttons (Reiniciar / Guardar) */
+  #btnSaveMatch, #btnResetDraft{
+    padding: 10px 12px !important;
+    min-width: 44px;
+    justify-content:center;
+    gap: 0;
+  }
+  #btnSaveMatch .btn-label, #btnResetDraft .btn-label{ display:none !important; }
+  #btnSaveMatch .btn-ico, #btnResetDraft .btn-ico{ display:inline-flex !important; }
+  #btnSaveMatch .btn-ico svg, #btnResetDraft .btn-ico svg{ display:block; }
+
+  /* Select contrast (iOS) */
+  select.select{
+    background-color: rgba(18,21,39,.92) !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+  }
+  select.select option{
+    background-color: rgba(18,21,39,.98) !important;
+    color: var(--text) !important;
+  }
+
+  /* Jugadores toolbar compact */
+  .players-toolbar{
+    display:grid !important;
+    grid-template-columns: 1fr auto;
+    gap: 8px !important;
+    align-items:end !important;
+  }
+  .players-toolbar > div:nth-child(1){ min-width:0 !important; }
+  .players-toolbar > div:nth-child(2){ min-width:0 !important; }
+  .players-toolbar > div:nth-child(3){
+    grid-column: 1 / -1;
+    min-width:0 !important;
+  }
+  .players-toolbar .h2{ font-size: 12px; margin-bottom: 4px; }
+  #btnAddPlayer{ padding: 10px 12px; }
+}
+
+/* keep icon hidden on desktop */
+@media (min-width: 721px){
+  .btn-ico{ display:none !important; }
+}
