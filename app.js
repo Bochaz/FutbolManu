@@ -134,6 +134,15 @@ function sanitizeData(d){
   for (const m of out.matches){
     m.teamA = Array.isArray(m.teamA) ? m.teamA : [];
     m.teamB = Array.isArray(m.teamB) ? m.teamB : [];
+
+    // playersPerTeam (format: 5v5 .. 8v8)
+    if (m.playersPerTeam === undefined || m.playersPerTeam === null){
+      const guess = Math.max(m.teamA.length, m.teamB.length);
+      m.playersPerTeam = (guess >= 5 && guess <= 8) ? guess : 5;
+    } else {
+      m.playersPerTeam = clampInt(m.playersPerTeam);
+      if (m.playersPerTeam < 5 || m.playersPerTeam > 8) m.playersPerTeam = 5;
+    }
     m.createdAt = m.createdAt || new Date().toISOString();
 
     if (!m.playerStats || typeof m.playerStats !== "object") m.playerStats = {};
@@ -455,13 +464,15 @@ function renderNewMatch(){
   if (!state.draft){
     if (state.editingMatchId){
       const m = state.data.matches.find(x => x.id === state.editingMatchId);
-      state.draft = m ? { id:m.id, date:m.date, teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||new Date().toISOString() }
-                      : { id:uuid(), date:toISODateInput(new Date()), teamA:[], teamB:[], createdAt:new Date().toISOString() };
+      state.draft = m ? { id:m.id, date:m.date, playersPerTeam: m.playersPerTeam || 5, activeTeam: 'A', teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||new Date().toISOString() }
+                      : { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 5, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
     } else {
-      state.draft = { id:uuid(), date:toISODateInput(new Date()), teamA:[], teamB:[], createdAt:new Date().toISOString() };
+      state.draft = { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 5, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
     }
   }
   const d = state.draft;
+  if (!d.playersPerTeam) d.playersPerTeam = 5;
+  if (!d.activeTeam) d.activeTeam = 'A';
   const isEdit = !!state.editingMatchId;
 
   const q = ($("#nmSearch")?.value || "").trim().toLowerCase();
@@ -476,18 +487,34 @@ function renderNewMatch(){
   }).join("") : `<div>Sin jugadores</div>`;
 
   const teamZone = (team) => {
+    const max = d.playersPerTeam || 5;
     const ids = team === "A" ? d.teamA : d.teamB;
     const zoneClass = team === "A" ? "teamA" : "teamB";
     const label = team === "A" ? "Equipo A" : "Equipo B";
+
+    const overflow = Math.max(0, ids.length - max);
+    const missing = Math.max(0, max - ids.length);
+    const statusClass = overflow ? "overflow" : (missing ? "underfilled" : "");
+    const statusText = overflow ? `⚠️ Sobran ${overflow}` : (missing ? `Faltan ${missing}` : "Completo");
+    const statusTone = overflow ? "bad" : (missing ? "warn" : "ok");
+
+    const chips = ids.map((pid, i) => {
+      const over = i >= max;
+      return `<span class="player-chip ${over ? "slot-over" : ""}" draggable="true" data-player-id="${pid}" data-team="${team}">${escapeHtml(playerName(pid))}</span>`;
+    }).join(" ");
+
+    const empties = Array.from({length: missing}).map(()=> `<span class="slot-empty">Vacío</span>`).join("");
+
     return `
       <div class="panel">
         <div class="row" style="align-items:center; justify-content:space-between; margin-bottom:8px;">
           <div class="teamTag ${zoneClass}">${label}</div>
-          <div class="teamTag ${zoneClass}">${ids.length}</div>
+          <div class="teamTag ${zoneClass}">${ids.length} / ${max}</div>
         </div>
-        <div class="dropzone ${zoneClass}" data-zone="${team}">
-          ${ids.length ? ids.map(pid => `<span class="player-chip" draggable="true" data-player-id="${pid}" data-team="${team}">${escapeHtml(playerName(pid))}</span>`).join(" ") : ``}
+        <div class="dropzone ${zoneClass} ${statusClass}" data-zone="${team}">
+          ${chips} ${empties}
         </div>
+        <div class="team-status ${statusTone}">${statusText}</div>
       </div>
     `;
   };
@@ -495,10 +522,20 @@ function renderNewMatch(){
   el.innerHTML = `
     <div class="h1">${isEdit ? "Editar partido" : "Nuevo partido"}</div>
 
-    <div class="row" style="align-items:end; justify-content:space-between;">
+    <div class="row" style="align-items:end; justify-content:space-between; flex-wrap:wrap; gap:10px;">
       <div style="flex:1; min-width:260px;">
         <div class="h2">Fecha</div>
         <input class="input" type="date" id="matchDate" value="${d.date}" />
+      </div>
+
+      <div style="min-width:200px;">
+        <div class="h2">Formato</div>
+        <select class="select" id="playersPerTeam">
+          <option value="5" ${d.playersPerTeam===5 ? "selected" : ""}>5v5</option>
+          <option value="6" ${d.playersPerTeam===6 ? "selected" : ""}>6v6</option>
+          <option value="7" ${d.playersPerTeam===7 ? "selected" : ""}>7v7</option>
+          <option value="8" ${d.playersPerTeam===8 ? "selected" : ""}>8v8</option>
+        </select>
       </div>
       <div class="row" style="gap:8px; justify-content:flex-end;">
         ${isEdit ? `<button class="btn" id="btnCancelEdit">Cancelar</button>` : `<button class="btn" id="btnResetDraft">Reiniciar</button>`}
@@ -516,6 +553,14 @@ function renderNewMatch(){
         <div class="player-list" id="playerList">${listHtml}</div>
       </div>
 
+      <div class="team-select">
+        <div class="h2" style="margin:0;">Cargando en</div>
+        <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
+        <button class="team-toggle teamB ${d.activeTeam==='B' ? 'is-active' : ''}" id="selTeamB">Equipo B</button>
+      </div>
+
+      <div style="height:10px;"></div>
+
       <div class="teams-right">
         ${teamZone("A")}
         ${teamZone("B")}
@@ -524,6 +569,9 @@ function renderNewMatch(){
   `;
 
   $("#matchDate").onchange = (e) => { d.date = e.target.value; };
+  $("#playersPerTeam").onchange = (e) => { d.playersPerTeam = clampInt(e.target.value); autoSwitchTeamIfNeeded(); renderNewMatch(); };
+  $("#selTeamA").onclick = () => { d.activeTeam = "A"; renderNewMatch(); };
+  $("#selTeamB").onclick = () => { d.activeTeam = "B"; renderNewMatch(); };
   $("#nmSearch").oninput = () => renderNewMatch();
 
   if (isEdit){
@@ -536,12 +584,18 @@ function renderNewMatch(){
     if (!d.date) return toast("Fecha requerida");
     const participants = [...new Set([...(d.teamA||[]), ...(d.teamB||[])])];
     if (participants.length < 2) return toast("Sumá jugadores");
-    if (d.teamA.length < 1 || d.teamB.length < 1) return toast("1 por equipo mínimo");
+    const max = d.playersPerTeam || 0;
+    if (!max) return toast("Elegí formato");
+    const overA = d.teamA.length - max;
+    const overB = d.teamB.length - max;
+    if (overA > 0 || overB > 0) return toast(`Sobran jugadores (A ${d.teamA.length}/${max}, B ${d.teamB.length}/${max})`);
+    if (d.teamA.length < max || d.teamB.length < max) return toast(`Faltan jugadores (A ${d.teamA.length}/${max}, B ${d.teamB.length}/${max})`);
 
     if (isEdit){
       const m = state.data.matches.find(x => x.id === state.editingMatchId);
       if (!m) return toast("No se encontró");
       m.date = d.date;
+      m.playersPerTeam = d.playersPerTeam || 5;
       m.teamA = [...d.teamA];
       m.teamB = [...d.teamB];
       normalizeMatchAfterEdit(m);
@@ -550,7 +604,7 @@ function renderNewMatch(){
       await persist("Partido actualizado");
       setView("matches");
     } else {
-      state.data.matches.push({ id:d.id, date:d.date, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
+      state.data.matches.push({ id:d.id, date:d.date, playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
       state.draft = null;
       await persist("Partido creado");
       setView("matches");
@@ -585,18 +639,66 @@ function renderNewMatch(){
         zone.classList.remove("is-over");
         const pid = e.dataTransfer.getData("text/plain");
         if (!pid) return;
-        assignTo(pid, zone.dataset.zone);
+        const team = zone.dataset.zone;
+        d.activeTeam = team;
+        assignTo(pid, team);
         renderNewMatch();
       });
     });
+
+    // Drop on the player list to remove from teams
+    const playerList = $("#playerList", root);
+    if (playerList){
+      playerList.addEventListener("dragover", (e) => { e.preventDefault(); playerList.classList.add("is-over"); });
+      playerList.addEventListener("dragleave", () => playerList.classList.remove("is-over"));
+      playerList.addEventListener("drop", (e) => {
+        e.preventDefault();
+        playerList.classList.remove("is-over");
+        const pid = e.dataTransfer.getData("text/plain");
+        if (!pid) return;
+        unassign(pid);
+        renderNewMatch();
+      });
+    }
+  }
+
+  function autoSwitchTeamIfNeeded(){
+    const max = d.playersPerTeam || 0;
+    if (!max) return;
+    const aFull = d.teamA.length >= max;
+    const bFull = d.teamB.length >= max;
+    if (d.activeTeam === "A" && aFull && !bFull) d.activeTeam = "B";
+    else if (d.activeTeam === "B" && bFull && !aFull) d.activeTeam = "A";
   }
 
   function toggleAssignment(pid){
+    const max = d.playersPerTeam || 0;
+    let active = d.activeTeam || "A";
     const inA = d.teamA.includes(pid);
     const inB = d.teamB.includes(pid);
-    if (!inA && !inB) assignTo(pid, "A");
-    else if (inA) assignTo(pid, "B");
-    else unassign(pid);
+
+    // clicking player already in active team removes it
+    if ((active === "A" && inA) || (active === "B" && inB)){
+      unassign(pid);
+      return;
+    }
+
+    // if adding a new player and active team is full, auto switch (click-flow avoids overflow)
+    if (!inA && !inB && max){
+      const aFull = d.teamA.length >= max;
+      const bFull = d.teamB.length >= max;
+      if (active === "A" && aFull && !bFull) active = "B";
+      if (active === "B" && bFull && !aFull) active = "A";
+      if ((d.teamA.length >= max) && (d.teamB.length >= max)){
+        toast("Equipos completos");
+        return;
+      }
+    }
+
+    d.activeTeam = active;
+    assignTo(pid, active);
+
+    autoSwitchTeamIfNeeded();
   }
   function assignTo(pid, team){
     unassign(pid);
@@ -613,13 +715,9 @@ function renderNewMatch(){
    MATCHES (collapse + edit)
    ============================ */
 function isInteractiveTarget(target){
-  return !!(
-    target.closest("button, a, input, select, textarea, label, [role='button']") ||
-    target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player], [data-toggle-expand]") ||
-    target.closest("table")
-  );
+  return !!(target.closest("button, a, input, select, textarea, label, [role='button']") ||
+            target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player]"));
 }
-
 
 function renderMatches(){
   const el = $("#viewMatches");
@@ -687,16 +785,16 @@ function renderMatches(){
       const m = state.data.matches.find(x => x.id === matchId);
       if (!m) return;
       openPlayerStatModal(m, pid);
-      return;
-    }
 
-    // Click on the card toggles expand/collapse (except if clicking on controls / table)
+    // Click on the card itself toggles expand/collapse (but not when clicking on controls)
     const card = e.target.closest("[data-card-match]");
     if (card && !isInteractiveTarget(e.target)){
       const id = card.dataset.cardMatch;
       if (state.ui.expandedMatches.has(id)) state.ui.expandedMatches.delete(id);
       else state.ui.expandedMatches.add(id);
       renderMatches();
+      return;
+    }
       return;
     }
   };
@@ -775,7 +873,7 @@ function renderMatches(){
             <div class="scoreline">
               ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
             </div>
-            <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · Votos: ${votesCount}</div>
+            <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · ${m.playersPerTeam ? (m.playersPerTeam+"v"+m.playersPerTeam+" · ") : ""}Votos: ${votesCount}</div>
           </div>
           <div class="row" style="gap:8px; justify-content:flex-end;">
             <button class="btn btn-small" data-toggle-expand="${m.id}">Colapsar</button>
