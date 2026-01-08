@@ -480,3 +480,6 @@ body{
   outline-offset: 6px;
   background: rgba(255,255,255,.03);
 }
+
+
+.newmatch-right{ display:flex; flex-direction:column; gap:10px; align-self:start; }

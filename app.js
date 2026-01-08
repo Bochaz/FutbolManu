@@ -334,6 +334,7 @@ function openRenamePlayerModal(player){
       <div class="row" style="justify-content:flex-end;">
         <button class="btn btn-primary" id="save">Guardar</button>
       </div>
+      </div>
     </div>
   `;
   document.body.appendChild(modal);
@@ -389,8 +390,7 @@ function renderPlayers(){
           <th>A</th>
           <th>MVP</th>
           <th>W-D-L</th>
-          <th>GF/GA</th>
-          <th></th>
+                    <th></th>
         </tr>
       </thead>
       <tbody id="playersTbody"></tbody>
@@ -411,10 +411,9 @@ function renderPlayers(){
       <td>${s.assists}</td>
       <td>${s.mvpPoints}</td>
       <td>${s.wins}-${s.draws}-${s.losses}</td>
-      <td>${s.gf}/${s.ga}</td>
-      <td class="row" style="gap:8px; justify-content:flex-end;"><button class="btn btn-small" data-rename-player="${p.id}">Editar</button><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
+            <td class="row" style="gap:8px; justify-content:flex-end;"><button class="btn btn-small" data-rename-player="${p.id}">Editar</button><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
     </tr>
-  `).join("") : `<tr><td colspan="8">Sin jugadores</td></tr>`;
+  `).join("") : `<tr><td colspan="7">Sin jugadores</td></tr>`;
 
   $("#btnAddPlayer").onclick = async () => {
     const name = ($("#playerName").value || "").trim();
@@ -553,6 +552,7 @@ function renderNewMatch(){
         <div class="player-list" id="playerList">${listHtml}</div>
       </div>
 
+      <div class="newmatch-right">
       <div class="team-select">
         <div class="h2" style="margin:0;">Cargando en</div>
         <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
@@ -564,6 +564,7 @@ function renderNewMatch(){
       <div class="teams-right">
         ${teamZone("A")}
         ${teamZone("B")}
+      </div>
       </div>
     </div>
   `;
@@ -715,9 +716,13 @@ function renderNewMatch(){
    MATCHES (collapse + edit)
    ============================ */
 function isInteractiveTarget(target){
-  return !!(target.closest("button, a, input, select, textarea, label, [role='button']") ||
-            target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player]"));
+  return !!(
+    target.closest("button, a, input, select, textarea, label, [role='button']") ||
+    target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player], [data-toggle-expand]") ||
+    target.closest("table")
+  );
 }
+
 
 function renderMatches(){
   const el = $("#viewMatches");
@@ -785,16 +790,15 @@ function renderMatches(){
       const m = state.data.matches.find(x => x.id === matchId);
       if (!m) return;
       openPlayerStatModal(m, pid);
+      return;
+    }
 
-    // Click on the card itself toggles expand/collapse (but not when clicking on controls)
     const card = e.target.closest("[data-card-match]");
     if (card && !isInteractiveTarget(e.target)){
       const id = card.dataset.cardMatch;
       if (state.ui.expandedMatches.has(id)) state.ui.expandedMatches.delete(id);
       else state.ui.expandedMatches.add(id);
       renderMatches();
-      return;
-    }
       return;
     }
   };
