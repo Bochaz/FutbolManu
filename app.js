@@ -5,7 +5,7 @@ const BIN_ID = "695ec4fed0ea881f405b8cdf";
 const X_ACCESS_KEY = "$2a$10$nzjX1kWtm5vCMZj8qtlSoeP/kUp77ZWnpFE6kWIcnBqe1fDL1lkDi";
 
 const API_BASE = "https://api.jsonbin.io/v3/b";
-const LS_KEY = "futbol_stats_data_v2";
+const LS_KEY = "manu_futbol_data_v2";
 
 /* ============================
    UTIL
@@ -23,7 +23,7 @@ function toast(msg){
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(toast._tm);
-  toast._tm = setTimeout(()=>t.classList.remove("show"), 2200);
+  toast._tm = setTimeout(()=>t.classList.remove("show"), 1800);
 }
 
 function overlay(show, text="Procesando…"){
@@ -60,10 +60,7 @@ function escapeHtml(str){
 }
 
 /* ============================
-   DATA MODEL
-   v2:
-   match.playerStats: { [playerId]: {goals:int, assists:int} }
-   match.mvpVotes: [{ voter:string, picks:[p1,p2,p3], createdAt }]
+   DATA MODEL (v2)
    ============================ */
 function defaultData(){
   return {
@@ -78,8 +75,10 @@ let state = {
   data: defaultData(),
   stats: null,
   draft: null,
+  editingMatchId: null,
   ui: {
-    expandedMatches: new Set()
+    expandedMatches: new Set(),
+    expandedVotes: new Set()
   }
 };
 
@@ -119,7 +118,7 @@ function saveLocal(record){
 }
 
 /* ============================
-   MIGRATION + SANITIZE
+   SANITIZE + MIGRATE
    ============================ */
 function sanitizeData(d){
   const base = defaultData();
@@ -132,18 +131,13 @@ function sanitizeData(d){
     updatedAt: d.updatedAt || new Date().toISOString()
   };
 
-  // migrate old matches (if any)
   for (const m of out.matches){
     m.teamA = Array.isArray(m.teamA) ? m.teamA : [];
     m.teamB = Array.isArray(m.teamB) ? m.teamB : [];
     m.createdAt = m.createdAt || new Date().toISOString();
 
-    // playerStats
-    if (!m.playerStats || typeof m.playerStats !== "object"){
-      m.playerStats = {};
-    }
+    if (!m.playerStats || typeof m.playerStats !== "object") m.playerStats = {};
 
-    // If legacy goals array exists: convert to counts
     if (Array.isArray(m.goals) && m.goals.length){
       for (const g of m.goals){
         const scorer = g?.scorerId;
@@ -160,27 +154,17 @@ function sanitizeData(d){
     }
     delete m.goals;
 
-    // MVP votes
     if (!Array.isArray(m.mvpVotes)) m.mvpVotes = [];
     if (Array.isArray(m.mvp) && m.mvp.some(Boolean) && m.mvpVotes.length === 0){
-      m.mvpVotes.push({
-        voter: "Legacy",
-        picks: [m.mvp[0] || null, m.mvp[1] || null, m.mvp[2] || null],
-        createdAt: new Date().toISOString()
-      });
+      m.mvpVotes.push({ voter: "Legacy", picks: [m.mvp[0]||null, m.mvp[1]||null, m.mvp[2]||null], createdAt: new Date().toISOString() });
     }
     delete m.mvp;
 
-    // normalize playerStats values
     for (const [pid, ps] of Object.entries(m.playerStats)){
       if (!ps || typeof ps !== "object") { delete m.playerStats[pid]; continue; }
-      m.playerStats[pid] = {
-        goals: clampInt(ps.goals),
-        assists: clampInt(ps.assists)
-      };
+      m.playerStats[pid] = { goals: clampInt(ps.goals), assists: clampInt(ps.assists) };
     }
 
-    // normalize votes
     m.mvpVotes = m.mvpVotes
       .filter(v => v && typeof v.voter === "string" && v.voter.trim())
       .map(v => ({
@@ -194,16 +178,14 @@ function sanitizeData(d){
 }
 
 /* ============================
-   STATS + MATCH COMPUTED
+   COMPUTED
    ============================ */
 function computeMatchScore(m){
   const sumGoals = (ids) => (ids || []).reduce((acc, pid) => {
     const ps = m.playerStats?.[pid];
     return acc + (ps ? clampInt(ps.goals) : 0);
   }, 0);
-  const a = sumGoals(m.teamA);
-  const b = sumGoals(m.teamB);
-  return { a, b };
+  return { a: sumGoals(m.teamA), b: sumGoals(m.teamB) };
 }
 
 function computeMatchVoteTally(m){
@@ -224,58 +206,36 @@ function computeMatchVoteTally(m){
 
 function computeStats(data){
   const playersById = new Map(data.players.map(p => [p.id, p]));
-
   const stats = {};
   for (const p of data.players){
-    stats[p.id] = {
-      id: p.id,
-      name: p.name,
-      played: 0,
-      goals: 0,
-      assists: 0,
-      mvpPoints: 0,
-      mvp1: 0, mvp2: 0, mvp3: 0,
-      wins: 0, draws: 0, losses: 0,
-      gf: 0, ga: 0
-    };
+    stats[p.id] = { id:p.id, name:p.name, played:0, goals:0, assists:0, mvpPoints:0, mvp1:0, mvp2:0, mvp3:0, wins:0, draws:0, losses:0, gf:0, ga:0 };
   }
 
   for (const m of data.matches){
     const teamA = new Set(m.teamA || []);
-    const teamB = new Set(m.teamB || []);
     const participants = new Set([...(m.teamA||[]), ...(m.teamB||[])]);
 
-    // played + goals/assists
     for (const pid of participants){
       const s = stats[pid];
       if (!s) continue;
       s.played += 1;
       const ps = m.playerStats?.[pid];
-      if (ps){
-        s.goals += clampInt(ps.goals);
-        s.assists += clampInt(ps.assists);
-      }
+      if (ps){ s.goals += clampInt(ps.goals); s.assists += clampInt(ps.assists); }
     }
 
-    // score + results + gf/ga
     const { a:gA, b:gB } = computeMatchScore(m);
-    m._scoreA = gA; m._scoreB = gB;
-
     for (const pid of participants){
       const s = stats[pid];
       if (!s) continue;
       const isA = teamA.has(pid);
       const my = isA ? gA : gB;
       const opp = isA ? gB : gA;
-      s.gf += my;
-      s.ga += opp;
-
+      s.gf += my; s.ga += opp;
       if (my > opp) s.wins += 1;
       else if (my < opp) s.losses += 1;
       else s.draws += 1;
     }
 
-    // MVP votes tally
     const pts = [3,2,1];
     for (const v of (m.mvpVotes || [])){
       const picks = Array.isArray(v.picks) ? v.picks : [];
@@ -299,26 +259,16 @@ function computeStats(data){
 }
 
 /* ============================
-   VIEW ROUTING
+   ROUTING
    ============================ */
 function setView(name){
-  const map = {
-    players: $("#viewPlayers"),
-    newMatch: $("#viewNewMatch"),
-    matches: $("#viewMatches"),
-    leaderboard: $("#viewLeaderboard"),
-  };
-  for (const [k, el] of Object.entries(map)){
-    el.classList.toggle("hidden", k !== name);
-  }
+  const map = { players:$("#viewPlayers"), newMatch:$("#viewNewMatch"), matches:$("#viewMatches"), leaderboard:$("#viewLeaderboard") };
+  for (const [k, el] of Object.entries(map)) el.classList.toggle("hidden", k !== name);
   $$(".tab").forEach(b => b.classList.toggle("is-active", b.dataset.view === name));
   renderAll();
 }
 
-function playerName(pid){
-  const p = state.stats?.playersById?.get(pid);
-  return p?.name ?? "¿Quién?";
-}
+function playerName(pid){ return state.stats?.playersById?.get(pid)?.name ?? "—"; }
 
 function sortMatchesDesc(a,b){
   return (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || "");
@@ -333,11 +283,11 @@ async function persist(msg){
     state.data.updatedAt = new Date().toISOString();
     saveLocal(state.data);
     await saveRemote(state.data);
-    toast(msg + " ✅");
+    toast(msg);
   }catch(err){
     console.error(err);
     saveLocal(state.data);
-    toast(msg + " ⚠️ (quedó en tu navegador)");
+    toast(msg + " (offline)");
   }finally{
     overlay(false);
     state.stats = computeStats(state.data);
@@ -345,8 +295,18 @@ async function persist(msg){
   }
 }
 
+function normalizeMatchAfterEdit(m){
+  const participants = new Set([...(m.teamA||[]), ...(m.teamB||[])]);
+  if (!m.playerStats || typeof m.playerStats !== "object") m.playerStats = {};
+  for (const pid of Object.keys(m.playerStats)){
+    if (!participants.has(pid)) delete m.playerStats[pid];
+  }
+  m.mvpVotes = Array.isArray(m.mvpVotes) ? m.mvpVotes : [];
+  m.mvpVotes = m.mvpVotes.map(v => ({ ...v, picks: (v.picks||[]).map(pid => (pid && participants.has(pid)) ? pid : null) }));
+}
+
 /* ============================
-   PLAYERS VIEW (tabla)
+   PLAYERS
    ============================ */
 function renderPlayers(){
   const el = $("#viewPlayers");
@@ -358,8 +318,8 @@ function renderPlayers(){
 
     <div class="row" style="align-items:end;">
       <div style="flex:1; min-width:260px;">
-        <div class="h2">Agregar jugador</div>
-        <input class="input" id="playerName" placeholder="Nombre (ej: Tomi)" />
+        <div class="h2">Agregar</div>
+        <input class="input" id="playerName" placeholder="Nombre" />
       </div>
       <div style="min-width:180px;">
         <button class="btn btn-primary" id="btnAddPlayer">+ Agregar</button>
@@ -387,7 +347,6 @@ function renderPlayers(){
       </thead>
       <tbody id="playersTbody"></tbody>
     </table>
-    <div class="mini" style="margin-top:10px;">MVP = puntos 3-2-1 por cada votante.</div>
   `;
 
   const q = ($("#playerSearch")?.value || "").trim().toLowerCase();
@@ -396,8 +355,7 @@ function renderPlayers(){
     .filter(x => !q || x.p.name.toLowerCase().includes(q))
     .sort((a,b)=> (b.s.mvpPoints - a.s.mvpPoints) || (b.s.goals - a.s.goals) || a.p.name.localeCompare(b.p.name));
 
-  const tb = $("#playersTbody");
-  tb.innerHTML = rows.length ? rows.map(({p,s}) => `
+  $("#playersTbody").innerHTML = rows.length ? rows.map(({p,s}) => `
     <tr>
       <td><b>${escapeHtml(p.name)}</b></td>
       <td>${s.played}</td>
@@ -408,12 +366,12 @@ function renderPlayers(){
       <td>${s.gf}/${s.ga}</td>
       <td><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
     </tr>
-  `).join("") : `<tr><td colspan="8" class="mini">No hay jugadores todavía.</td></tr>`;
+  `).join("") : `<tr><td colspan="8">Sin jugadores</td></tr>`;
 
   $("#btnAddPlayer").onclick = async () => {
     const name = ($("#playerName").value || "").trim();
-    if (!name) return toast("Poné un nombre.");
-    if (state.data.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return toast("Ese jugador ya existe.");
+    if (!name) return toast("Nombre requerido");
+    if (state.data.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return toast("Ya existe");
     state.data.players.push({ id: uuid(), name });
     await persist("Jugador agregado");
     $("#playerName").value = "";
@@ -425,165 +383,153 @@ function renderPlayers(){
     const btn = e.target.closest("[data-del-player]");
     if (!btn) return;
     const pid = btn.dataset.delPlayer;
-
     const used = state.data.matches.some(m => (m.teamA||[]).includes(pid) || (m.teamB||[]).includes(pid));
-    if (used && !confirm("Ese jugador aparece en partidos. Si lo eliminás, se borra también de esos partidos. ¿Seguro?")) return;
+    if (used && !confirm("Ese jugador aparece en partidos. ¿Eliminar igual?")) return;
 
     state.data.players = state.data.players.filter(p => p.id !== pid);
-
-    // limpiar referencias en partidos
     for (const m of state.data.matches){
       m.teamA = (m.teamA||[]).filter(x => x !== pid);
       m.teamB = (m.teamB||[]).filter(x => x !== pid);
       if (m.playerStats) delete m.playerStats[pid];
-
-      // limpiar votos
-      m.mvpVotes = (m.mvpVotes||[]).map(v => ({
-        ...v,
-        picks: (v.picks||[]).map(x => x === pid ? null : x)
-      }));
+      m.mvpVotes = (m.mvpVotes||[]).map(v => ({ ...v, picks: (v.picks||[]).map(x => x === pid ? null : x) }));
     }
-
     await persist("Jugador eliminado");
   };
 }
 
 /* ============================
-   NEW MATCH VIEW (solo fecha+equipos)
+   NEW MATCH (players left, teams right)
    ============================ */
 function renderNewMatch(){
   const el = $("#viewNewMatch");
   const data = state.data;
 
   if (!state.draft){
-    state.draft = {
-      id: uuid(),
-      date: toISODateInput(new Date()),
-      teamA: [],
-      teamB: [],
-      playerStats: {},
-      mvpVotes: [],
-      createdAt: new Date().toISOString()
-    };
+    if (state.editingMatchId){
+      const m = state.data.matches.find(x => x.id === state.editingMatchId);
+      state.draft = m ? { id:m.id, date:m.date, teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||new Date().toISOString() }
+                      : { id:uuid(), date:toISODateInput(new Date()), teamA:[], teamB:[], createdAt:new Date().toISOString() };
+    } else {
+      state.draft = { id:uuid(), date:toISODateInput(new Date()), teamA:[], teamB:[], createdAt:new Date().toISOString() };
+    }
   }
   const d = state.draft;
+  const isEdit = !!state.editingMatchId;
 
-  const chips = data.players
-    .slice()
-    .sort((a,b)=> a.name.localeCompare(b.name))
-    .map(p => {
-      const team = d.teamA.includes(p.id) ? "A" : d.teamB.includes(p.id) ? "B" : "N";
-      return `
-        <span class="player-chip" draggable="true"
-          data-player-id="${p.id}" data-team="${team}" title="Click = rota / Drag = asigna">
-          ${escapeHtml(p.name)}
-          <small>${team==="A" ? "A" : team==="B" ? "B" : ""}</small>
-        </span>
-      `;
-    }).join(" ");
+  const q = ($("#nmSearch")?.value || "").trim().toLowerCase();
+  const players = data.players.slice().sort((a,b)=>a.name.localeCompare(b.name)).filter(p => !q || p.name.toLowerCase().includes(q));
+
+  const listHtml = players.length ? players.map(p => {
+    const team = d.teamA.includes(p.id) ? "A" : d.teamB.includes(p.id) ? "B" : "N";
+    const pill = team === "A" ? `<span class="pill teamA">A</span>` : team === "B" ? `<span class="pill teamB">B</span>` : "";
+    return `<div class="player-item" draggable="true" data-player-id="${p.id}" data-team="${team}">
+              <div>${escapeHtml(p.name)}</div><div>${pill}</div>
+            </div>`;
+  }).join("") : `<div>Sin jugadores</div>`;
+
+  const teamZone = (team) => {
+    const ids = team === "A" ? d.teamA : d.teamB;
+    const zoneClass = team === "A" ? "teamA" : "teamB";
+    const label = team === "A" ? "Equipo A" : "Equipo B";
+    return `
+      <div class="panel">
+        <div class="row" style="align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div class="teamTag ${zoneClass}">${label}</div>
+          <div class="teamTag ${zoneClass}">${ids.length}</div>
+        </div>
+        <div class="dropzone ${zoneClass}" data-zone="${team}">
+          ${ids.length ? ids.map(pid => `<span class="player-chip" draggable="true" data-player-id="${pid}" data-team="${team}">${escapeHtml(playerName(pid))}</span>`).join(" ") : ``}
+        </div>
+      </div>
+    `;
+  };
 
   el.innerHTML = `
-    <div class="h1">Nuevo partido</div>
-    <div class="p">Armá fecha + equipos. Los goles/asistencias/votos se cargan después en “Partidos”.</div>
+    <div class="h1">${isEdit ? "Editar partido" : "Nuevo partido"}</div>
 
-    <div class="row" style="align-items:end;">
+    <div class="row" style="align-items:end; justify-content:space-between;">
       <div style="flex:1; min-width:260px;">
         <div class="h2">Fecha</div>
         <input class="input" type="date" id="matchDate" value="${d.date}" />
       </div>
-      <div style="min-width:220px;">
-        <button class="btn btn-primary" id="btnSaveMatch">Guardar partido</button>
-      </div>
-      <div style="min-width:160px;">
-        <button class="btn" id="btnResetDraft">Reiniciar</button>
+      <div class="row" style="gap:8px; justify-content:flex-end;">
+        ${isEdit ? `<button class="btn" id="btnCancelEdit">Cancelar</button>` : `<button class="btn" id="btnResetDraft">Reiniciar</button>`}
+        <button class="btn btn-primary" id="btnSaveMatch">${isEdit ? "Guardar cambios" : "Guardar partido"}</button>
       </div>
     </div>
 
     <div class="hr"></div>
 
-    <div class="h2">Jugadores (click o drag)</div>
-    <div class="mini">Click = rota (sin equipo → A → B → sin equipo). Drag = tiralo en A o B.</div>
-    <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;" id="chipPool">
-      ${chips || `<span class="mini">No hay jugadores. Cargalos en “Jugadores”.</span>`}
-    </div>
-
-    <div class="hr"></div>
-
-    <div class="row">
-      <div class="col">
-        <div class="h2">Equipo A</div>
-        <div class="dropzone" id="zoneA" data-zone="A"></div>
+    <div class="newmatch-layout">
+      <div class="panel">
+        <div class="h2">Jugadores</div>
+        <input class="input" id="nmSearch" placeholder="Buscar…" />
+        <div style="height:10px;"></div>
+        <div class="player-list" id="playerList">${listHtml}</div>
       </div>
-      <div class="col">
-        <div class="h2">Equipo B</div>
-        <div class="dropzone" id="zoneB" data-zone="B"></div>
+
+      <div class="teams-right">
+        ${teamZone("A")}
+        ${teamZone("B")}
       </div>
     </div>
   `;
 
   $("#matchDate").onchange = (e) => { d.date = e.target.value; };
+  $("#nmSearch").oninput = () => renderNewMatch();
 
-  renderTeamZone("A");
-  renderTeamZone("B");
-  setupChipInteractions();
-
-  $("#btnResetDraft").onclick = () => {
-    if (!confirm("¿Reiniciar el partido en edición?")) return;
-    state.draft = null;
-    toast("Reiniciado");
-    renderNewMatch();
-  };
-
-  $("#btnSaveMatch").onclick = async () => {
-    if (!d.date) return toast("Elegí fecha.");
-    const participants = [...new Set([...(d.teamA||[]), ...(d.teamB||[])])];
-    if (participants.length < 2) return toast("Sumá jugadores.");
-    if (d.teamA.length < 1 || d.teamB.length < 1) return toast("Necesitás al menos 1 por equipo.");
-
-    state.data.matches.push({
-      id: d.id,
-      date: d.date,
-      teamA: [...d.teamA],
-      teamB: [...d.teamB],
-      playerStats: {},
-      mvpVotes: [],
-      createdAt: d.createdAt
-    });
-
-    state.draft = null;
-    await persist("Partido creado");
-    setView("matches");
-  };
-
-  function renderTeamZone(team){
-    const zone = team === "A" ? $("#zoneA") : $("#zoneB");
-    const ids = team === "A" ? d.teamA : d.teamB;
-    zone.innerHTML = ids.length
-      ? ids.map(pid => `<span class="player-chip" draggable="true" data-player-id="${pid}" data-team="${team}">${escapeHtml(playerName(pid))}<small>${team}</small></span>`).join(" ")
-      : `<span class="mini">Arrastrá jugadores acá o clickealos arriba.</span>`;
+  if (isEdit){
+    $("#btnCancelEdit").onclick = () => { state.draft=null; state.editingMatchId=null; setView("matches"); };
+  } else {
+    $("#btnResetDraft").onclick = () => { if (!confirm("¿Reiniciar?")) return; state.draft=null; renderNewMatch(); };
   }
 
-  function setupChipInteractions(){
+  $("#btnSaveMatch").onclick = async () => {
+    if (!d.date) return toast("Fecha requerida");
+    const participants = [...new Set([...(d.teamA||[]), ...(d.teamB||[])])];
+    if (participants.length < 2) return toast("Sumá jugadores");
+    if (d.teamA.length < 1 || d.teamB.length < 1) return toast("1 por equipo mínimo");
+
+    if (isEdit){
+      const m = state.data.matches.find(x => x.id === state.editingMatchId);
+      if (!m) return toast("No se encontró");
+      m.date = d.date;
+      m.teamA = [...d.teamA];
+      m.teamB = [...d.teamB];
+      normalizeMatchAfterEdit(m);
+      state.draft = null;
+      state.editingMatchId = null;
+      await persist("Partido actualizado");
+      setView("matches");
+    } else {
+      state.data.matches.push({ id:d.id, date:d.date, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
+      state.draft = null;
+      await persist("Partido creado");
+      setView("matches");
+    }
+  };
+
+  setupNewMatchInteractions();
+
+  function setupNewMatchInteractions(){
     const root = $("#viewNewMatch");
 
-    // click cycle (delegated, once because we re-render)
     root.addEventListener("click", (e) => {
-      const chip = e.target.closest(".player-chip");
-      if (!chip) return;
-      const pid = chip.dataset.playerId;
+      const item = e.target.closest("[data-player-id]");
+      if (!item) return;
+      const pid = item.dataset.playerId;
       toggleAssignment(pid);
       renderNewMatch();
     }, { once:true });
 
-    // drag
-    $$(".player-chip", root).forEach(chip => {
-      chip.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", chip.dataset.playerId);
+    $$("[draggable='true'][data-player-id]", root).forEach(node => {
+      node.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", node.dataset.playerId);
         e.dataTransfer.effectAllowed = "move";
       });
     });
 
-    $$(".dropzone", root).forEach(zone => {
+    $$(".dropzone[data-zone]", root).forEach(zone => {
       zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("is-over"); });
       zone.addEventListener("dragleave", () => zone.classList.remove("is-over"));
       zone.addEventListener("drop", (e) => {
@@ -616,7 +562,7 @@ function renderNewMatch(){
 }
 
 /* ============================
-   MATCHES VIEW (visual + edición por jugador + votos)
+   MATCHES (collapse + edit)
    ============================ */
 function renderMatches(){
   const el = $("#viewMatches");
@@ -624,30 +570,47 @@ function renderMatches(){
 
   el.innerHTML = `
     <div class="h1">Partidos</div>
-    <div class="p">Resultado arriba, equipos abajo. Click en un jugador para cargar goles/asistencias. Votación con nombre.</div>
-
     <div id="matchesWrap">
-      ${list.length ? list.map(m => renderMatchCard(m)).join("") : `<div class="mini">Todavía no hay partidos. Andá a “Nuevo partido”.</div>`}
+      ${list.length ? list.map(m => renderMatchCard(m)).join("") : `<div>Sin partidos</div>`}
     </div>
   `;
 
-  // handlers (delegated)
   el.onclick = async (e) => {
     const btnDel = e.target.closest("[data-del-match]");
     if (btnDel){
       const id = btnDel.dataset.delMatch;
-      if (!confirm("¿Eliminar este partido?")) return;
+      if (!confirm("¿Eliminar partido?")) return;
       state.data.matches = state.data.matches.filter(m => m.id !== id);
+      state.ui.expandedMatches.delete(id);
+      state.ui.expandedVotes.delete(id);
       await persist("Partido eliminado");
       return;
     }
 
-    const btnToggle = e.target.closest("[data-toggle-detail]");
-    if (btnToggle){
-      const id = btnToggle.dataset.toggleDetail;
+    const btnExpand = e.target.closest("[data-toggle-expand]");
+    if (btnExpand){
+      const id = btnExpand.dataset.toggleExpand;
       if (state.ui.expandedMatches.has(id)) state.ui.expandedMatches.delete(id);
       else state.ui.expandedMatches.add(id);
       renderMatches();
+      return;
+    }
+
+    const btnVotes = e.target.closest("[data-toggle-votes]");
+    if (btnVotes){
+      const id = btnVotes.dataset.toggleVotes;
+      if (state.ui.expandedVotes.has(id)) state.ui.expandedVotes.delete(id);
+      else state.ui.expandedVotes.add(id);
+      renderMatches();
+      return;
+    }
+
+    const btnEdit = e.target.closest("[data-edit-match]");
+    if (btnEdit){
+      const id = btnEdit.dataset.editMatch;
+      state.editingMatchId = id;
+      state.draft = null;
+      setView("newMatch");
       return;
     }
 
@@ -673,27 +636,45 @@ function renderMatches(){
 
   function renderMatchCard(m){
     const expanded = state.ui.expandedMatches.has(m.id);
+    const showVotes = state.ui.expandedVotes.has(m.id);
     const { a, b } = computeMatchScore(m);
     const tally = computeMatchVoteTally(m);
+    const votesCount = (m.mvpVotes || []).length;
+
+    if (!expanded){
+      return `
+        <div class="match-card">
+          <div class="match-header">
+            <div>
+              <div class="scoreline">
+                ${fmtDate(m.date)} · A <span class="big teamA">${a}</span> — <span class="big teamB">${b}</span> B
+              </div>
+              <div class="match-meta">Votos: ${votesCount}</div>
+            </div>
+            <div class="row" style="gap:8px; justify-content:flex-end;">
+              <button class="btn btn-small" data-toggle-expand="${m.id}">Expandir</button>
+              <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
+              <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
     const renderTeam = (ids) => {
-      if (!ids.length) return `<div class="mini">—</div>`;
+      if (!ids.length) return ``;
       return ids.map(pid => {
         const ps = m.playerStats?.[pid] || { goals:0, assists:0 };
         const g = clampInt(ps.goals);
         const as = clampInt(ps.assists);
-
         const pts = tally.points[pid] || 0;
         const votes = tally.pickedCount[pid] || 0;
         const hasVotes = votes > 0;
 
         return `
           <button class="player-row ${hasVotes ? "has-votes" : ""}"
-            data-edit-player="${pid}" data-match-id="${m.id}" title="Editar goles/asistencias">
-            <span class="name">
-              <b>${escapeHtml(playerName(pid))}</b>
-              ${hasVotes ? `<span class="icon-pill">⭐ ${pts}</span>` : ""}
-            </span>
+            data-edit-player="${pid}" data-match-id="${m.id}">
+            <span><b>${escapeHtml(playerName(pid))}</b>${hasVotes ? ` <span class="icon-pill">⭐ ${pts}</span>` : ""}</span>
             <span class="icons">
               ${g ? `<span class="icon-pill">G ${g}</span>` : ""}
               ${as ? `<span class="icon-pill">A ${as}</span>` : ""}
@@ -703,9 +684,6 @@ function renderMatches(){
       }).join("");
     };
 
-    const votesCount = (m.mvpVotes || []).length;
-
-    // detail votes table
     const votesTable = votesCount ? `
       <table class="table" style="margin-top:8px;">
         <thead><tr><th>Votante</th><th>🥇</th><th>🥈</th><th>🥉</th></tr></thead>
@@ -720,39 +698,41 @@ function renderMatches(){
           `).join("")}
         </tbody>
       </table>
-    ` : `<div class="mini" style="margin-top:8px;">Todavía nadie votó figuras.</div>`;
+    ` : ``;
 
     return `
       <div class="match-card">
         <div class="match-header">
           <div>
             <div class="scoreline">
-              ${fmtDate(m.date)} · A <span class="big">${a}</span> — <span class="big">${b}</span> B
+              ${fmtDate(m.date)} · A <span class="big teamA">${a}</span> — <span class="big teamB">${b}</span> B
             </div>
             <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · Votos: ${votesCount}</div>
           </div>
           <div class="row" style="gap:8px; justify-content:flex-end;">
-            <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar figuras</button>
-            <button class="btn btn-small" data-toggle-detail="${m.id}">${expanded ? "Ocultar detalle" : "Detalle"}</button>
+            <button class="btn btn-small" data-toggle-expand="${m.id}">Colapsar</button>
+            <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
+            <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar</button>
+            <button class="btn btn-small" data-toggle-votes="${m.id}">${showVotes ? "Ocultar votos" : "Ver votos"}</button>
             <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
           </div>
         </div>
 
         <div class="teams-split">
-          <div class="team-box">
+          <div class="team-box teamA">
             <div class="team-title"><span>Equipo A</span><b>${a}</b></div>
             ${renderTeam(m.teamA || [])}
           </div>
-          <div class="team-box">
+          <div class="team-box teamB">
             <div class="team-title"><span>Equipo B</span><b>${b}</b></div>
             ${renderTeam(m.teamB || [])}
           </div>
         </div>
 
-        ${expanded ? `
+        ${showVotes ? `
           <div class="detail-box">
-            <div class="h2">Detalle de votos</div>
-            ${votesTable}
+            <div class="h2">Votos</div>
+            ${votesTable || "Sin votos"}
           </div>
         ` : ``}
       </div>
@@ -767,10 +747,7 @@ function renderMatches(){
     modal.innerHTML = `
       <div class="card" style="width:min(720px,92vw); padding:16px; border-radius:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div>
-            <div class="h1" style="margin:0;">${escapeHtml(playerName(pid))}</div>
-            <div class="mini">Partido ${fmtDate(match.date)} · Editá goles y asistencias</div>
-          </div>
+          <div><div class="h1" style="margin:0;">${escapeHtml(playerName(pid))}</div></div>
           <button class="btn" id="close">Cerrar</button>
         </div>
 
@@ -800,10 +777,8 @@ function renderMatches(){
     $("#save", modal).onclick = async () => {
       const g = clampInt($("#goals", modal).value);
       const a = clampInt($("#assists", modal).value);
-
       match.playerStats = match.playerStats || {};
       match.playerStats[pid] = { goals: g, assists: a };
-
       modal.remove();
       await persist("Actualizado");
     };
@@ -811,75 +786,55 @@ function renderMatches(){
 
   function openVoteModal(match){
     const participants = [...new Set([...(match.teamA||[]), ...(match.teamB||[])])];
-    if (participants.length < 2) return toast("Este partido no tiene suficientes jugadores.");
+    if (participants.length < 2) return toast("Sin jugadores");
 
-    const opts = participants
-      .map(pid => `<option value="${pid}">${escapeHtml(playerName(pid))}</option>`)
-      .join("");
+    const opts = participants.map(pid => `<option value="${pid}">${escapeHtml(playerName(pid))}</option>`).join("");
 
     const modal = document.createElement("div");
     modal.className = "overlay";
     modal.innerHTML = `
       <div class="card" style="width:min(820px,92vw); padding:16px; border-radius:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div>
-            <div class="h1" style="margin:0;">Votar figuras</div>
-            <div class="mini">${fmtDate(match.date)} · Suma puntos 3-2-1</div>
-          </div>
+          <div><div class="h1" style="margin:0;">Votar figuras</div></div>
           <button class="btn" id="close">Cerrar</button>
         </div>
 
         <div class="hr"></div>
 
         <div class="h2">Tu nombre</div>
-        <input class="input" id="voter" placeholder="Ej: Nico" maxlength="40" />
+        <input class="input" id="voter" maxlength="40" />
 
         <div class="hr"></div>
 
         <div class="row">
-          <div class="col">
-            <div class="h2">🥇 Primera figura</div>
-            <select class="select" id="p1"><option value="">Elegí…</option>${opts}</select>
-          </div>
-          <div class="col">
-            <div class="h2">🥈 Segunda figura</div>
-            <select class="select" id="p2"><option value="">Elegí…</option>${opts}</select>
-          </div>
-          <div class="col">
-            <div class="h2">🥉 Tercera figura</div>
-            <select class="select" id="p3"><option value="">Elegí…</option>${opts}</select>
-          </div>
+          <div class="col"><div class="h2">🥇</div><select class="select" id="p1"><option value="">—</option>${opts}</select></div>
+          <div class="col"><div class="h2">🥈</div><select class="select" id="p2"><option value="">—</option>${opts}</select></div>
+          <div class="col"><div class="h2">🥉</div><select class="select" id="p3"><option value="">—</option>${opts}</select></div>
         </div>
 
         <div class="hr"></div>
 
         <div class="row" style="justify-content:flex-end;">
-          <button class="btn btn-primary" id="save">Guardar voto</button>
+          <button class="btn btn-primary" id="save">Guardar</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
 
     $("#close", modal).onclick = () => modal.remove();
-
     $("#save", modal).onclick = async () => {
       const voter = ($("#voter", modal).value || "").trim();
-      if (!voter) return toast("Poné tu nombre para votar.");
-
+      if (!voter) return toast("Nombre requerido");
       const p1 = $("#p1", modal).value || null;
       const p2 = $("#p2", modal).value || null;
       const p3 = $("#p3", modal).value || null;
 
       const picks = [p1,p2,p3].filter(Boolean);
       const uniq = new Set(picks);
-      if (picks.length && uniq.size !== picks.length) return toast("Las figuras deben ser distintas.");
+      if (picks.length && uniq.size !== picks.length) return toast("Figuras repetidas");
 
       match.mvpVotes = match.mvpVotes || [];
-      match.mvpVotes.push({
-        voter,
-        picks: [p1,p2,p3],
-        createdAt: new Date().toISOString()
-      });
+      match.mvpVotes.push({ voter, picks:[p1,p2,p3], createdAt:new Date().toISOString() });
 
       modal.remove();
       await persist("Voto guardado");
@@ -888,7 +843,7 @@ function renderMatches(){
 }
 
 /* ============================
-   LEADERBOARD VIEW
+   LEADERBOARD
    ============================ */
 function renderLeaderboard(){
   const el = $("#viewLeaderboard");
@@ -908,7 +863,7 @@ function renderLeaderboard(){
         <div class="h2">${title}</div>
         <table class="table" style="margin-top:8px;">
           <thead><tr><th>#</th><th>Jugador</th><th>Principal</th><th>Extra</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="4" class="mini">—</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="4">—</td></tr>`}</tbody>
         </table>
       </div>
     `;
@@ -916,16 +871,14 @@ function renderLeaderboard(){
 
   el.innerHTML = `
     <div class="h1">Rankings</div>
-    <div class="p">Goles, asistencias y MVP (por votación).</div>
-
-    ${topTable("Goleadores", s.byGoals, p=> `${p.goals} G`, p=> `${p.assists} A`)}
-    ${topTable("Asistidores", s.byAssists, p=> `${p.assists} A`, p=> `${p.goals} G`)}
-    ${topTable("MVP", s.byMvp, p=> `${p.mvpPoints} pts`, p=> `🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}`)}
+    ${topTable("Goleadores", s.byGoals, p=> `${p.goals}`, p=> `A ${p.assists}`)}
+    ${topTable("Asistidores", s.byAssists, p=> `${p.assists}`, p=> `G ${p.goals}`)}
+    ${topTable("MVP", s.byMvp, p=> `${p.mvpPoints}`, p=> `🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}`)}
   `;
 }
 
 /* ============================
-   RENDER ROUTER
+   RENDER
    ============================ */
 function renderAll(){
   state.stats = computeStats(state.data);
@@ -937,20 +890,26 @@ function renderAll(){
 }
 
 /* ============================
-   UI WIRING
+   UI
    ============================ */
 function wireUI(){
-  $$(".tab[data-view]").forEach(btn => btn.onclick = () => setView(btn.dataset.view));
+  $$(".tab[data-view]").forEach(btn => btn.onclick = () => {
+    if (btn.dataset.view !== "newMatch" && state.editingMatchId){
+      state.editingMatchId = null;
+      state.draft = null;
+    }
+    setView(btn.dataset.view);
+  });
 
   $("#btnSync").onclick = async () => {
     try{
       overlay(true, "Sincronizando…");
       saveLocal(state.data);
       await saveRemote(state.data);
-      toast("Sync OK ✅");
+      toast("Sync OK");
     }catch(err){
       console.error(err);
-      toast("Sync falló ⚠️");
+      toast("Sync falló");
     }finally{
       overlay(false);
     }
@@ -966,22 +925,12 @@ async function initialLoad(){
     const remote = await loadRemote();
     state.data = sanitizeData(remote);
     saveLocal(state.data);
-    toast("Datos cargados ✅");
   }catch(err){
-    console.warn("Remote load failed:", err);
     const local = loadLocal();
-    if (local){
-      state.data = sanitizeData(local);
-      toast("Cargado desde cache local ⚠️");
-    }else{
-      state.data = defaultData();
-      toast("Arrancamos en blanco");
-    }
+    state.data = local ? sanitizeData(local) : defaultData();
   }finally{
     overlay(false);
     state.stats = computeStats(state.data);
-
-    // flujo sugerido: si no hay partidos → Nuevo Partido, si hay → Partidos
     if ((state.data.matches || []).length === 0) setView("newMatch");
     else setView("matches");
   }
