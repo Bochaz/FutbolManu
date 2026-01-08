@@ -613,9 +613,13 @@ function renderNewMatch(){
    MATCHES (collapse + edit)
    ============================ */
 function isInteractiveTarget(target){
-  return !!(target.closest("button, a, input, select, textarea, label, [role='button']") ||
-            target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player]"));
+  return !!(
+    target.closest("button, a, input, select, textarea, label, [role='button']") ||
+    target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player], [data-toggle-expand]") ||
+    target.closest("table")
+  );
 }
+
 
 function renderMatches(){
   const el = $("#viewMatches");
@@ -683,16 +687,16 @@ function renderMatches(){
       const m = state.data.matches.find(x => x.id === matchId);
       if (!m) return;
       openPlayerStatModal(m, pid);
+      return;
+    }
 
-    // Click on the card itself toggles expand/collapse (but not when clicking on controls)
+    // Click on the card toggles expand/collapse (except if clicking on controls / table)
     const card = e.target.closest("[data-card-match]");
     if (card && !isInteractiveTarget(e.target)){
       const id = card.dataset.cardMatch;
       if (state.ui.expandedMatches.has(id)) state.ui.expandedMatches.delete(id);
       else state.ui.expandedMatches.add(id);
       renderMatches();
-      return;
-    }
       return;
     }
   };

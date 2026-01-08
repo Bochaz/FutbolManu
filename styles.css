@@ -406,3 +406,32 @@ body{
 .team-box.teamA .player-row:hover{ box-shadow: 0 0 0 4px rgba(124,92,255,.14); }
 .team-box.teamB .player-row:hover{ box-shadow: 0 0 0 4px rgba(37,198,216,.12); }
 .player-row b{ color: rgba(238,242,255,.98); letter-spacing:.1px; }
+
+
+@media (max-width: 640px){
+  .topbar{ padding: 10px 12px; gap: 10px; }
+  .brand-sub{ display:none; }
+  .logo-mark{ width:36px; height:36px; border-radius: 12px; }
+  .tabs{
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  .tab{ white-space: nowrap; padding: 8px 10px; font-size: 12px; }
+  .main{ margin: 12px auto 64px; padding: 0 10px; }
+  .card{ padding: 12px; }
+
+  .match-header{ flex-direction: column; align-items: stretch; }
+  .match-header .row{ justify-content: flex-start; flex-wrap: wrap; }
+  .scoreline{ font-size: 16px; }
+  .scoreline .big{ margin: 0 4px; }
+
+  .player-row{ padding: 10px 10px; }
+  .icon-pill{ font-size: 11px; padding: 3px 7px; }
+  .teams-split{ gap: 10px; margin-top: 10px; }
+
+  /* Tables scroll on small screens */
+  .table{ display:block; overflow-x:auto; }
+  .table th, .table td{ padding: 8px 8px; }
+}
