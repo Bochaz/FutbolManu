@@ -78,9 +78,10 @@ let state = {
   editingMatchId: null,
   ui: {
     expandedMatches: new Set(),
-    expandedVotes: new Set()
-  }
-};
+    expandedVotes: new Set(),
+    playerQuery: "",
+    nmQuery: ""
+  }};
 
 /* ============================
    JSONBIN IO + LOCAL CACHE
@@ -367,6 +368,10 @@ function renderPlayers(){
   const data = state.data;
   const stats = state.stats;
 
+  const __focusPlayers = (document.activeElement && document.activeElement.id === "playerSearch")
+    ? { pos: document.activeElement.selectionStart || 0 }
+    : null;
+
   el.innerHTML = `
     <div class="h1">Jugadores</div>
 
@@ -380,7 +385,7 @@ function renderPlayers(){
       </div>
       <div style="flex:1; min-width:260px;">
         <div class="h2">Buscar</div>
-        <input class="input" id="playerSearch" placeholder="Buscar…" />
+        <input class="input" id="playerSearch" placeholder="Buscar…" value="${escapeHtml(state.ui.playerQuery||"")}" />
       </div>
     </div>
 
@@ -402,7 +407,7 @@ function renderPlayers(){
     </table>
   `;
 
-  const q = ($("#playerSearch")?.value || "").trim().toLowerCase();
+  const q = (state.ui.playerQuery || "").trim().toLowerCase();
   const rows = data.players
     .map(p => ({ p, s: stats.statsById[p.id] }))
     .filter(x => !q || x.p.name.toLowerCase().includes(q))
@@ -429,7 +434,12 @@ function renderPlayers(){
     $("#playerName").value = "";
   };
 
-  $("#playerSearch").oninput = () => renderPlayers();
+  $("#playerSearch").oninput = (e) => { state.ui.playerQuery = e.target.value; renderPlayers(); };
+  if (__focusPlayers){
+    const __el = $("#playerSearch");
+    if (__el){ __el.focus(); try{ __el.setSelectionRange(__focusPlayers.pos, __focusPlayers.pos); }catch(e){} }
+  }
+
 
   el.onclick = async (e) => {
     const ren = e.target.closest("[data-rename-player]");
@@ -465,6 +475,10 @@ function renderNewMatch(){
   const el = $("#viewNewMatch");
   const data = state.data;
 
+  const __focusNM = (document.activeElement && document.activeElement.id === "nmSearch")
+    ? { pos: document.activeElement.selectionStart || 0 }
+    : null;
+
   if (!state.draft){
     if (state.editingMatchId){
       const m = state.data.matches.find(x => x.id === state.editingMatchId);
@@ -479,7 +493,7 @@ function renderNewMatch(){
   if (!d.activeTeam) d.activeTeam = 'A';
   const isEdit = !!state.editingMatchId;
 
-  const q = ($("#nmSearch")?.value || "").trim().toLowerCase();
+  const q = (state.ui.nmQuery || "").trim().toLowerCase();
   const players = data.players.slice().sort((a,b)=>a.name.localeCompare(b.name)).filter(p => !q || p.name.toLowerCase().includes(q));
 
   const listHtml = players.length ? players.map(p => {
@@ -558,7 +572,7 @@ function renderNewMatch(){
 
       <div class="panel">
         <div class="h2">Jugadores</div>
-        <input class="input" id="nmSearch" placeholder="Buscar…" />
+        <input class="input" id="nmSearch" placeholder="Buscar…" value="${escapeHtml(state.ui.nmQuery||"")}" />
         <div style="height:10px;"></div>
         <div class="player-list" id="playerList">${listHtml}</div>
       </div>
@@ -571,7 +585,12 @@ function renderNewMatch(){
   $("#playersPerTeam").onchange = (e) => { d.playersPerTeam = clampInt(e.target.value); autoSwitchTeamIfNeeded(); renderNewMatch(); };
   $("#selTeamA").onclick = () => { d.activeTeam = "A"; renderNewMatch(); };
   $("#selTeamB").onclick = () => { d.activeTeam = "B"; renderNewMatch(); };
-  $("#nmSearch").oninput = () => renderNewMatch();
+  $("#nmSearch").oninput = (e) => { state.ui.nmQuery = e.target.value; renderNewMatch(); };
+  if (__focusNM){
+    const __el = $("#nmSearch");
+    if (__el){ __el.focus(); try{ __el.setSelectionRange(__focusNM.pos, __focusNM.pos); }catch(e){} }
+  }
+
 
   if (isEdit){
     $("#btnCancelEdit").onclick = () => { state.draft=null; state.editingMatchId=null; setView("matches"); };
