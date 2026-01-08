@@ -175,9 +175,13 @@ function sanitizeData(d){
     }
 
     m.mvpVotes = m.mvpVotes
-      .filter(v => v && typeof v.voter === "string" && v.voter.trim())
+      .filter(v => v && (
+        (typeof v.voterId === "string" && v.voterId.trim()) ||
+        (typeof v.voter === "string" && v.voter.trim())
+      ))
       .map(v => ({
-        voter: v.voter.trim().slice(0, 40),
+        voterId: (typeof v.voterId === "string" && v.voterId.trim()) ? v.voterId.trim() : null,
+        voter: (typeof v.voter === "string" ? v.voter.trim().slice(0, 40) : ""),
         picks: Array.isArray(v.picks) ? [v.picks[0]||null, v.picks[1]||null, v.picks[2]||null] : [null,null,null],
         createdAt: v.createdAt || new Date().toISOString()
       }));
@@ -853,7 +857,7 @@ function renderMatches(){
         <tbody>
           ${(m.mvpVotes||[]).slice().reverse().map(v => `
             <tr>
-              <td><b>${escapeHtml(v.voter)}</b></td>
+              <td><b>${escapeHtml(v.voterId ? playerName(v.voterId) : (v.voter||""))}</b></td>
               <td>${v.picks?.[0] ? escapeHtml(playerName(v.picks[0])) : "—"}</td>
               <td>${v.picks?.[1] ? escapeHtml(playerName(v.picks[1])) : "—"}</td>
               <td>${v.picks?.[2] ? escapeHtml(playerName(v.picks[2])) : "—"}</td>
@@ -964,8 +968,8 @@ function renderMatches(){
 
         <div class="hr"></div>
 
-        <div class="h2">Tu nombre</div>
-        <input class="input" id="voter" maxlength="40" />
+        <div class="h2">Votante</div>
+        <select class="select" id="voterId"><option value="">Elegí jugador…</option>${opts}</select>
 
         <div class="hr"></div>
 
@@ -997,7 +1001,21 @@ function renderMatches(){
       if (picks.length && uniq.size !== picks.length) return toast("Figuras repetidas");
 
       match.mvpVotes = match.mvpVotes || [];
-      match.mvpVotes.push({ voter, picks:[p1,p2,p3], createdAt:new Date().toISOString() });
+
+      const voterName = (playerName(voterId) || "").trim();
+      const voterNameKey = voterName.toLowerCase();
+      const existingIdx = match.mvpVotes.findIndex(v =>
+        (v && v.voterId === voterId) ||
+        (!v.voterId && (v.voter||"").trim().toLowerCase() === voterNameKey)
+      );
+
+      const payload = { voterId, picks:[p1,p2,p3], createdAt:new Date().toISOString() };
+      if (existingIdx >= 0){
+        match.mvpVotes[existingIdx] = { ...match.mvpVotes[existingIdx], ...payload };
+        toast("Voto actualizado");
+      } else {
+        match.mvpVotes.push(payload);
+      }
 
       modal.remove();
       await persist("Voto guardado");
