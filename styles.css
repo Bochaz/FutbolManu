@@ -500,7 +500,8 @@ body{
 /* Team list layout (Nuevo Partido) */
 .dropzone.teamlist{
   max-height: 520px;
-  overflow:auto;
+  overflow-y:auto;
+  overflow-x:hidden;
 
   display:flex;
   flex-direction:column;
@@ -567,8 +568,10 @@ select.select option{
   .player-list{ max-height: 46vh; overflow:auto; }
   .dropzone.teamlist{
   max-height: 520px;
-  overflow:auto;
- max-height: 34vh; overflow:auto; }
+  overflow-y:auto;
+  overflow-x:hidden;
+ max-height: 34vh; overflow-y:auto;
+  overflow-x:hidden; }
   .input, .select{ font-size: 15px; }
 
   /* Partidos */
@@ -579,4 +582,17 @@ select.select option{
 
   /* Jugadores */
   .table{ border-radius: 14px; }
+}
+
+
+/* Prevent horizontal scroll in team lists */
+.dropzone.teamlist .player-chip{
+  display:flex;
+  min-width:0;
+}
+.dropzone.teamlist .pname{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
