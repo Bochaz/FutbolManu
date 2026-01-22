@@ -970,8 +970,6 @@ function renderMatches(){
       `;
     }
 
-        }
-
     const renderTeam = (ids) => {
       if (!ids.length) return ``;
       return ids.map(pid => {
@@ -1146,7 +1144,7 @@ function renderMatches(){
     $("#close", modal).onclick = () => modal.remove();
     $("#save", modal).onclick = async () => {
       const voterId = ($("#voterId", modal).value || "").trim();
-      if (!voterId) return toast("Decí quién está botando");
+      if (!voterId) return toast("Decí quién está votando");
       if (!participants.includes(voterId)) return toast("Votante inválido");
 
       const p1 = $("#p1", modal).value || null;
