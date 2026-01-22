@@ -868,7 +868,7 @@ function renderMatches(){
   const list = state.data.matches.slice().sort(sortMatchesDesc);
 
   el.innerHTML = `
-    <div class="h1">Partidos</div>
+    <div class="h1">PARTIDOS</div>
     <div id="matchesWrap">
       ${list.length ? list.map(m => renderMatchCard(m)).join("") : `<div>Sin partidos</div>`}
     </div>
@@ -957,7 +957,7 @@ function renderMatches(){
           <div class="match-header">
             <div class="match-left">
               <div class="match-date">${fmtDate(m.date)}</div>
-              <div class="match-meta">${format}</div>
+              <div class="match-meta"><span class="meta-format">${format}</span> <span class="meta-sep">•</span> <span class="meta-mvp">🌟 ${mvpWinnerId ? escapeHtml(playerName(mvpWinnerId)) : "Sin MVP"}</span></div>
             </div>
 
             <div class="match-score">
@@ -1022,7 +1022,7 @@ function renderMatches(){
         <div class="match-header">
           <div class="match-left">
             <div class="match-date">${fmtDate(m.date)}</div>
-            <div class="match-meta">${format}</div>
+            <div class="match-meta"><span class="meta-format">${format}</span> <span class="meta-sep">•</span> <span class="meta-mvp">🌟 ${mvpWinnerId ? escapeHtml(playerName(mvpWinnerId)) : "Sin MVP"}</span></div>
           </div>
 
           <div class="match-score">

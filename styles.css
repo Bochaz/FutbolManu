@@ -329,7 +329,7 @@ body::before{
 .match-left{ grid-column:1; text-align:left; }
 .match-score{ grid-column:2; text-align:center; justify-self:center; }
 .match-actions{ grid-column:3; justify-self:end; }
-.match-date{ font-weight: 950; font-size: 16px; }
+.match-date{ font-weight: 950; font-size: 22px; }
 .match-left .match-meta{ margin-top: 4px; }
 .scoreline{
   font-weight:950;
@@ -349,7 +349,9 @@ body::before{
 .scoreline .big.teamA{ background: rgba(124,92,255,.16); border-color: rgba(124,92,255,.28); }
 .scoreline .big.teamB{ background: rgba(37,198,216,.12); border-color: rgba(37,198,216,.24); }
 
-.match-meta{ color: var(--muted); font-weight:900; font-size:12px; margin-top:4px; }
+.match-meta{ color: var(--muted); font-weight:900; font-size:12px; margin-top:4px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.meta-sep{ opacity:.6; }
+.meta-mvp{ color: rgba(238,242,255,.92); font-weight:950; }
 
 .team-tag{
   display:inline-flex;
