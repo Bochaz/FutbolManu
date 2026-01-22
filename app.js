@@ -63,6 +63,55 @@ function normalizeUrl(u){
 }
 
 
+
+function extractYouTubeId(url){
+  const u = (url || "").trim();
+  if (!u) return null;
+  try{
+    const nu = normalizeUrl(u);
+    const parsed = new URL(nu);
+    const host = (parsed.hostname || "").replace(/^www\./i,"").toLowerCase();
+
+    // youtu.be/<id>
+    if (host === "youtu.be"){
+      const id = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      return id ? id.slice(0, 32) : null;
+    }
+
+    if (host.endsWith("youtube.com")){
+      // /watch?v=<id>
+      const v = parsed.searchParams.get("v");
+      if (v) return v.slice(0, 32);
+
+      // /embed/<id>
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      const embedIdx = parts.indexOf("embed");
+      if (embedIdx >= 0 && parts[embedIdx+1]) return parts[embedIdx+1].slice(0, 32);
+
+      // /shorts/<id>
+      const shortsIdx = parts.indexOf("shorts");
+      if (shortsIdx >= 0 && parts[shortsIdx+1]) return parts[shortsIdx+1].slice(0, 32);
+    }
+  }catch(e){
+    return null;
+  }
+  return null;
+}
+
+function canonicalYouTubeUrl(url){
+  const id = extractYouTubeId(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : "";
+}
+
+function youTubeEmbedUrl(url){
+  const id = extractYouTubeId(url);
+  if (!id) return "";
+  // rel=0: related videos from same channel (current YouTube behavior)
+  return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1`;
+}
+
+
+
 function escapeHtml(str){
   return String(str)
     .replaceAll("&","&amp;")
@@ -159,7 +208,8 @@ function sanitizeData(d){
     }
     m.createdAt = m.createdAt || new Date().toISOString();
 
-    m.videoUrl = (typeof m.videoUrl === "string") ? normalizeUrl(m.videoUrl).slice(0, 600) : "";
+        const _v = (typeof m.videoUrl === "string") ? normalizeUrl(m.videoUrl).slice(0, 600) : "";
+    m.videoUrl = canonicalYouTubeUrl(_v);
 
     if (!m.playerStats || typeof m.playerStats !== "object") m.playerStats = {};
 
@@ -620,13 +670,6 @@ function renderNewMatch(){
 
     <div class="hr"></div>
 
-    <div class="row" style="align-items:end; gap:10px;">
-      <div style="flex:1; min-width:260px;">
-        <div class="h2">Video</div>
-        <input class="input" id="matchVideo" placeholder="Pegá un link (YouTube, Drive, etc.)" value="${escapeHtml(d.videoUrl||"")}" />
-      </div>
-    </div>
-
     <div class="hr"></div>
 
     <div class="newmatch-layout">
@@ -648,7 +691,6 @@ function renderNewMatch(){
     </div>`;
 
   $("#matchDate").onchange = (e) => { d.date = e.target.value; };
-  $("#matchVideo").oninput = (e) => { d.videoUrl = e.target.value; };
   $("#playersPerTeam").onchange = (e) => { d.playersPerTeam = clampInt(e.target.value); autoSwitchTeamIfNeeded(); renderNewMatch(); };
   $("#selTeamA").onclick = () => { d.activeTeam = "A"; renderNewMatch(); };
   $("#selTeamB").onclick = () => { d.activeTeam = "B"; renderNewMatch(); };
@@ -832,6 +874,24 @@ function renderMatches(){
       return;
     }
 
+
+    const btnSaveVideo = e.target.closest("[data-save-video]");
+    if (btnSaveVideo){
+      const id = btnSaveVideo.dataset.saveVideo;
+      const m = state.data.matches.find(x => x.id === id);
+      if (!m) return;
+      const inp = el.querySelector(`[data-video-input="${id}"]`);
+      const raw = inp ? inp.value : "";
+      const canon = raw.trim() ? canonicalYouTubeUrl(raw) : "";
+      if (raw.trim() && !canon){
+        toast("Link de YouTube inválido");
+        return;
+      }
+      m.videoUrl = canon;
+      await persist("Video guardado");
+      return;
+    }
+
     const btnVotes = e.target.closest("[data-toggle-votes]");
     if (btnVotes){
       const id = btnVotes.dataset.toggleVotes;
@@ -888,6 +948,8 @@ function renderMatches(){
     const tally = mvp.tally;
     const winner = a === b ? null : (a > b ? 'A' : 'B');
     const votesCount = (m.mvpVotes || []).length;
+    const format = (m.playersPerTeam ? (m.playersPerTeam + "v" + m.playersPerTeam) : "7v7");
+    const embedUrl = m.videoUrl ? youTubeEmbedUrl(m.videoUrl) : "";
 
     if (!expanded){
       return `
@@ -897,11 +959,9 @@ function renderMatches(){
               <div class="scoreline">
                 ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
               </div>
-              <div class="match-meta">Votos: ${votesCount}${m.videoUrl ? " · 🎥" : ""}</div>
+              <div class="match-meta">${format}</div>
             </div>
-            <div class="row" style="gap:8px; justify-content:flex-end;">
-              ${m.videoUrl ? `<a class="btn btn-small" href="${escapeHtml(m.videoUrl)}" target="_blank" rel="noopener">🎥 Video</a>` : ``}
-              <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
+            <div class="row" style="gap:8px; justify-content:flex-end;">              <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
               <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
             </div>
           </div>
@@ -957,13 +1017,22 @@ function renderMatches(){
             </div>
             <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · ${m.playersPerTeam ? (m.playersPerTeam+"v"+m.playersPerTeam+" · ") : ""}Votos: ${votesCount}${m.videoUrl ? " · 🎥" : ""}</div>
           </div>
-          <div class="row" style="gap:8px; justify-content:flex-end;">
-            ${m.videoUrl ? `<a class="btn btn-small" href="${escapeHtml(m.videoUrl)}" target="_blank" rel="noopener">🎥 Video</a>` : ``}
-            <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
+          <div class="row" style="gap:8px; justify-content:flex-end;">            <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
             <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar</button>
             <button class="btn btn-small" data-toggle-votes="${m.id}">${showVotes ? "Ocultar votos" : "Ver votos"}</button>
             <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
           </div>
+        </div>
+
+
+        <div class="detail-box">
+          <div class="h2">Video (YouTube)</div>
+          <div class="row" style="gap:10px; align-items:end; flex-wrap:wrap;">
+            <input class="input" style="flex:1; min-width:260px;" data-video-input="${m.id}" placeholder="Pegá link de YouTube (youtu.be / watch?v=)" value="${escapeHtml(m.videoUrl||"")}" />
+            <button class="btn btn-small btn-primary" data-save-video="${m.id}">Guardar</button>
+            ${m.videoUrl ? `<a class="btn btn-small" href="${escapeHtml(m.videoUrl)}" target="_blank" rel="noopener">Abrir</a>` : ``}
+          </div>
+          ${embedUrl ? `<div class="video-embed"><iframe src="${embedUrl}" title="YouTube video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>` : ``}
         </div>
 
         <div class="teams-split">
@@ -1050,8 +1119,8 @@ function renderMatches(){
 
         <div class="hr"></div>
 
-        <div class="h2">Quien está botando</div>
-        <select class="select" id="voterId"><option value="">Quien está botando…</option>${voterOpts}</select>
+        <div class="h2">Quien está votando</div>
+        <select class="select" id="voterId"><option value="">Quien está votando…</option>${voterOpts}</select>
 
         <div class="hr"></div>
 
@@ -1104,7 +1173,7 @@ function renderLeaderboard(){
   const el = $("#viewLeaderboard");
   const s = state.stats;
 
-  function topTable({ title, arr, mainLabel, mainValue, extraLabel=null, extraValue=null }){
+  function topTable({ title, icon="", arr, mainLabel, mainValue, extraLabel=null, extraValue=null }){
   const hasExtra = typeof extraValue === "function";
   const rows = arr.slice(0,10).map((p, i) => `
     <tr>
@@ -1116,9 +1185,29 @@ function renderLeaderboard(){
   `).join("");
 
   return `
-    <div class="match-card" style="margin-bottom:12px;">
-      <div class="h2">${title}</div>
-      <table class="table" style="margin-top:8px;">
+    <div class="match-card rank-card" style="margin-bottom:12px;">
+      <div class="rank-card-header">
+        <div class="rank-title">
+          ${icon ? `<span class="rank-icon" aria-hidden="true">${icon}</span>` : ``}
+          <div class="h2" style="margin:0;">${title}</div>
+        </div>
+      </div>
+
+      <table class="table rank-table" style="margin-top:8px;">
+        ${hasExtra ? `
+          <colgroup>
+            <col style="width:52px" />
+            <col />
+            <col style="width:110px" />
+            <col style="width:240px" />
+          </colgroup>
+        ` : `
+          <colgroup>
+            <col style="width:52px" />
+            <col />
+            <col style="width:110px" />
+          </colgroup>
+        `}
         <thead><tr><th>#</th><th>Jugador</th><th>${mainLabel}</th>${hasExtra ? `<th>${extraLabel || ""}</th>` : ``}</tr></thead>
         <tbody>${rows || `<tr><td colspan="${hasExtra ? 4 : 3}">—</td></tr>`}</tbody>
       </table>
@@ -1128,9 +1217,9 @@ function renderLeaderboard(){
 
   el.innerHTML = `
     <div class="h1">Rankings</div>
-    ${topTable({ title:"Goleadores", arr:s.byGoals, mainLabel:"Goles", mainValue:p=> `${p.goals}` })}
-    ${topTable({ title:"Asistidores", arr:s.byAssists, mainLabel:"Asistencias", mainValue:p=> `${p.assists}` })}
-    ${topTable({ title:"MVP", arr:s.byMvp, mainLabel:"MVP", mainValue:p=> `${p.mvpStars}`, extraLabel:"Votos", extraValue:p=> `${p.mvpPoints} · 🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}` })}
+    ${topTable({ title:"Goleadores", icon:"⚽️", arr:s.byGoals, mainLabel:"Goles", mainValue:p=> `${p.goals}` })}
+    ${topTable({ title:"Asistidores", icon:"🤝", arr:s.byAssists, mainLabel:"Asistencias", mainValue:p=> `${p.assists}` })}
+    ${topTable({ title:"MVP", icon:"⭐", arr:s.byMvp, mainLabel:"MVP", mainValue:p=> `${p.mvpStars}`, extraLabel:"Votos", extraValue:p=> `${p.mvpPoints} · 🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}` })}
   `;
 }
 

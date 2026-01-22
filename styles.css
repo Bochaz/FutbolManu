@@ -707,3 +707,68 @@ select.select option{
     background: rgba(10,14,30,.92) !important;
   }
 }
+
+
+
+/* ============================
+   Partidos: video embebido
+   ============================ */
+.video-embed{
+  margin-top: 10px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.25);
+}
+.video-embed iframe{
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+}
+
+/* ============================
+   Rankings: alineación + iconos
+   ============================ */
+.rank-card-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+}
+.rank-title{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.rank-icon{
+  width: 34px;
+  height: 34px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius: 12px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.10);
+  font-size: 18px;
+}
+.rank-table{
+  table-layout: fixed;
+}
+.rank-table th:nth-child(1),
+.rank-table td:nth-child(1){
+  text-align:center;
+}
+.rank-table th:nth-child(3),
+.rank-table td:nth-child(3){
+  text-align:center;
+}
+.rank-table th:nth-child(4),
+.rank-table td:nth-child(4){
+  text-align:left;
+}
+.rank-table td:nth-child(2){
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
