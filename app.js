@@ -955,13 +955,21 @@ function renderMatches(){
       return `
         <div class="match-card" data-card-match="${m.id}">
           <div class="match-header">
-            <div class="match-spacer"></div>
-            <div class="match-info">
-              <div class="scoreline">
-                ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
-              </div>
+            <div class="match-left">
+              <div class="match-date">${fmtDate(m.date)}</div>
               <div class="match-meta">${format}</div>
             </div>
+
+            <div class="match-score">
+              <div class="scoreline">
+                <span class="team-tag teamA">A</span>
+                <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span>
+                <span class="dash">—</span>
+                <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span>
+                <span class="team-tag teamB">B</span>
+              </div>
+            </div>
+
             <div class="match-actions row" style="gap:8px; justify-content:flex-end;">
               <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
             </div>
@@ -1012,17 +1020,25 @@ function renderMatches(){
     return `
       <div class="match-card" data-card-match="${m.id}">
         <div class="match-header">
-          <div class="match-spacer"></div>
-          <div class="match-info">
-            <div class="scoreline">
-              ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
-            </div>
+          <div class="match-left">
+            <div class="match-date">${fmtDate(m.date)}</div>
             <div class="match-meta">${format}</div>
           </div>
+
+          <div class="match-score">
+            <div class="scoreline">
+              <span class="team-tag teamA">A</span>
+              <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span>
+              <span class="dash">—</span>
+              <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span>
+              <span class="team-tag teamB">B</span>
+            </div>
+          </div>
+
           <div class="match-actions row" style="gap:8px; justify-content:flex-end;">
-            <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
-            <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar</button>
             <button class="btn btn-small" data-toggle-votes="${m.id}">${showVotes ? "Ocultar votos" : "Ver votos"}</button>
+            <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar</button>
+            <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
           </div>
         </div>
 
