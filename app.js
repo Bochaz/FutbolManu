@@ -663,7 +663,7 @@ function renderNewMatch(){
         </select>
       </div>
       <div class="row" style="gap:8px; justify-content:flex-end;">
-        ${isEdit ? `<button class="btn" id="btnCancelEdit">Cancelar</button>` : `<button class="btn" id="btnResetDraft"><span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span><span class="btn-label">Reiniciar</span></button>`}
+        ${isEdit ? `<button class="btn" id="btnCancelEdit">Cancelar</button><button class="btn btn-danger" id="btnDeleteMatch">Eliminar</button>` : `<button class="btn" id="btnResetDraft"><span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span><span class="btn-label">Reiniciar</span></button>`}
         <button class="btn btn-primary" id="btnSaveMatch"><span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V7l4-4h10l4 4v12a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v4h8"/></svg></span><span class="btn-label">${isEdit ? "Guardar cambios" : "Guardar partido"}</span></button>
       </div>
     </div>
@@ -703,6 +703,19 @@ function renderNewMatch(){
 
   if (isEdit){
     $("#btnCancelEdit").onclick = () => { state.draft=null; state.editingMatchId=null; setView("matches"); };
+    $("#btnDeleteMatch").onclick = async () => {
+      const id = state.editingMatchId;
+      if (!id) return;
+      if (!confirm("¿Eliminar partido?")) return;
+      if (!confirm("Confirmá de nuevo: esto borra resultado, stats y votos. ¿Eliminar?")) return;
+      state.data.matches = state.data.matches.filter(m => m.id !== id);
+      state.ui.expandedMatches.delete(id);
+      state.ui.expandedVotes.delete(id);
+      state.draft = null;
+      state.editingMatchId = null;
+      await persist("Partido eliminado");
+      setView("matches");
+    };
   } else {
     $("#btnResetDraft").onclick = () => { if (!confirm("¿Reiniciar?")) return; state.draft=null; renderNewMatch(); };
   }
@@ -725,14 +738,13 @@ function renderNewMatch(){
       m.playersPerTeam = d.playersPerTeam || 5;
       m.teamA = [...d.teamA];
       m.teamB = [...d.teamB];
-      m.videoUrl = normalizeUrl(d.videoUrl).slice(0, 600);
       normalizeMatchAfterEdit(m);
       state.draft = null;
       state.editingMatchId = null;
       await persist("Partido actualizado");
       setView("matches");
     } else {
-      state.data.matches.push({ id:d.id, date:d.date, videoUrl: normalizeUrl(d.videoUrl).slice(0, 600), playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
+      state.data.matches.push({ id:d.id, date:d.date, videoUrl: "", playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
       state.draft = null;
       await persist("Partido creado");
       setView("matches");
@@ -863,18 +875,6 @@ function renderMatches(){
   `;
 
   el.onclick = async (e) => {
-    const btnDel = e.target.closest("[data-del-match]");
-    if (btnDel){
-      const id = btnDel.dataset.delMatch;
-      if (!confirm("¿Eliminar partido?")) return;
-      state.data.matches = state.data.matches.filter(m => m.id !== id);
-      state.ui.expandedMatches.delete(id);
-      state.ui.expandedVotes.delete(id);
-      await persist("Partido eliminado");
-      return;
-    }
-
-
     const btnSaveVideo = e.target.closest("[data-save-video]");
     if (btnSaveVideo){
       const id = btnSaveVideo.dataset.saveVideo;
@@ -955,19 +955,22 @@ function renderMatches(){
       return `
         <div class="match-card" data-card-match="${m.id}">
           <div class="match-header">
-            <div>
+            <div class="match-spacer"></div>
+            <div class="match-info">
               <div class="scoreline">
                 ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
               </div>
               <div class="match-meta">${format}</div>
             </div>
-            <div class="row" style="gap:8px; justify-content:flex-end;">              <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
-              <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
+            <div class="match-actions row" style="gap:8px; justify-content:flex-end;">
+              <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
             </div>
           </div>
         </div>
       `;
     }
+
+        }
 
     const renderTeam = (ids) => {
       if (!ids.length) return ``;
@@ -1011,16 +1014,17 @@ function renderMatches(){
     return `
       <div class="match-card" data-card-match="${m.id}">
         <div class="match-header">
-          <div>
+          <div class="match-spacer"></div>
+          <div class="match-info">
             <div class="scoreline">
               ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
             </div>
-            <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · ${m.playersPerTeam ? (m.playersPerTeam+"v"+m.playersPerTeam+" · ") : ""}Votos: ${votesCount}${m.videoUrl ? " · 🎥" : ""}</div>
+            <div class="match-meta">${format}</div>
           </div>
-          <div class="row" style="gap:8px; justify-content:flex-end;">            <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
+          <div class="match-actions row" style="gap:8px; justify-content:flex-end;">
+            <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
             <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar</button>
             <button class="btn btn-small" data-toggle-votes="${m.id}">${showVotes ? "Ocultar votos" : "Ver votos"}</button>
-            <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
           </div>
         </div>
 

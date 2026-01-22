@@ -321,11 +321,14 @@ body::before{
   margin-bottom: 12px;
 }
 .match-header{
-  display:flex;
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items:flex-start;
-  justify-content:space-between;
   gap:10px;
 }
+.match-info{ grid-column:2; text-align:center; }
+.match-actions{ grid-column:3; justify-self:end; }
+.match-info .scoreline, .match-info .match-meta{ text-align:center; }
 .scoreline{
   font-weight:950;
   font-size: 18px;
