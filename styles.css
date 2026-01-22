@@ -329,7 +329,7 @@ body::before{
 .match-left{ grid-column:1; text-align:left; }
 .match-score{ grid-column:2; text-align:center; justify-self:center; }
 .match-actions{ grid-column:3; justify-self:end; }
-.match-date{ font-weight: 950; font-size: 14px; }
+.match-date{ font-weight: 950; font-size: 16px; }
 .match-left .match-meta{ margin-top: 4px; }
 .scoreline{
   font-weight:950;
@@ -355,11 +355,11 @@ body::before{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,.12);
   font-weight:950;
-  font-size: 12px;
+  font-size: 16px;
   letter-spacing:.9px;
   text-transform:uppercase;
   color: var(--text);
@@ -433,10 +433,12 @@ body::before{
 }
 
 
-/* Winner highlight */
+/* Winner highlight (Team A/B pill) */
 .winner-pill{
-  background: rgba(47,229,122,.14) !important;
-  border-color: rgba(47,229,122,.35) !important;
+  background: rgba(47,229,122,.92) !important;
+  border-color: rgba(47,229,122,1) !important;
+  color: rgba(10,18,12,.95) !important;
+  box-shadow: 0 0 0 3px rgba(47,229,122,.18);
 }
 .team-box.winner{
   background: rgba(47,229,122,.06) !important;
@@ -767,6 +769,12 @@ select.select option{
   display:flex;
   align-items:center;
   gap:10px;
+}
+
+.rank-title .h2{
+  font-size: 18px;
+  color: var(--text);
+  letter-spacing: 1px;
 }
 .rank-icon{
   width: 34px;

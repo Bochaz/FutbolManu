@@ -962,11 +962,11 @@ function renderMatches(){
 
             <div class="match-score">
               <div class="scoreline">
-                <span class="team-tag teamA">A</span>
-                <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span>
+                <span class="team-tag teamA ${winner==='A' ? 'winner-pill' : ''}">A</span>
+                <span class="big teamA">${a}</span>
                 <span class="dash">—</span>
-                <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span>
-                <span class="team-tag teamB">B</span>
+                <span class="big teamB">${b}</span>
+                <span class="team-tag teamB ${winner==='B' ? 'winner-pill' : ''}">B</span>
               </div>
             </div>
 
@@ -1027,11 +1027,11 @@ function renderMatches(){
 
           <div class="match-score">
             <div class="scoreline">
-              <span class="team-tag teamA">A</span>
-              <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span>
+              <span class="team-tag teamA ${winner==='A' ? 'winner-pill' : ''}">A</span>
+              <span class="big teamA">${a}</span>
               <span class="dash">—</span>
-              <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span>
-              <span class="team-tag teamB">B</span>
+              <span class="big teamB">${b}</span>
+              <span class="team-tag teamB ${winner==='B' ? 'winner-pill' : ''}">B</span>
             </div>
           </div>
 
@@ -1207,7 +1207,7 @@ function renderLeaderboard(){
       <div class="rank-card-header">
         <div class="rank-title">
           ${icon ? `<span class="rank-icon" aria-hidden="true">${icon}</span>` : ``}
-          <div class="h2" style="margin:0;">${title}</div>
+          <div class="h2 rank-title-text" style="margin:0;">${title}</div>
         </div>
       </div>
 
@@ -1234,9 +1234,9 @@ function renderLeaderboard(){
 }
 
   el.innerHTML = `
-    <div class="h1">Rankings</div>
-    ${topTable({ title:"Goleadores", icon:"⚽️", arr:s.byGoals, mainLabel:"Goles", mainValue:p=> `${p.goals}` })}
-    ${topTable({ title:"Asistidores", icon:"🤝", arr:s.byAssists, mainLabel:"Asistencias", mainValue:p=> `${p.assists}` })}
+    <div class="h1">RANKINGS</div>
+    ${topTable({ title:"GOLEADORES", icon:"⚽️", arr:s.byGoals, mainLabel:"Goles", mainValue:p=> `${p.goals}` })}
+    ${topTable({ title:"ASISTIDORES", icon:"🤝", arr:s.byAssists, mainLabel:"Asistencias", mainValue:p=> `${p.assists}` })}
     ${topTable({ title:"MVP", icon:"⭐", arr:s.byMvp, mainLabel:"MVP", mainValue:p=> `${p.mvpStars}`, extraLabel:"Votos", extraValue:p=> `${p.mvpPoints} · 🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}` })}
   `;
 }
