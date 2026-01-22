@@ -18,16 +18,29 @@
 }
 
 *{ box-sizing:border-box; }
-html,body{ height:100%; }
+html,body{ min-height:100%; }
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue";
   color:var(--text);
+  background: transparent;
+  position: relative;
+}
+
+/* Fixed app background (no "corte" al scrollear) */
+body::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
     radial-gradient(1200px 700px at 15% 0%, rgba(124,92,255,.18), transparent 60%),
     radial-gradient(900px 600px at 85% 25%, rgba(37,198,216,.12), transparent 62%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
+  background-repeat: no-repeat;
 }
+
 
 .topbar{
   position:sticky; top:0; z-index:5;
@@ -91,6 +104,8 @@ body{
 
 .hidden{ display:none !important; }
 
+.muted{ color: var(--muted); font-weight: 900; }
+
 .row{ display:flex; gap:12px; flex-wrap:wrap; }
 .col{ flex:1; min-width: 280px; }
 .hr{ height:1px; background: rgba(255,255,255,.09); margin: 14px 0; }
@@ -117,6 +132,11 @@ body{
 
 .btn{
   cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  text-decoration:none;
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(18,21,39,.92);
@@ -605,7 +625,7 @@ select.select option{
 /* Mobile: compact headers + icon buttons */
 @media (max-width: 720px){
   /* simplify background (quita tinte violeta raro en algunos móviles) */
-  body{
+  body::before{
     background: linear-gradient(180deg, var(--bg0), var(--bg1)) !important;
   }
 
@@ -678,7 +698,7 @@ select.select option{
 
 /* Mobile background plain (no tint / máscara rara) */
 @media (max-width: 720px){
-  body{
+  body::before{
     background: linear-gradient(180deg, var(--bg0), var(--bg1)) !important;
   }
   .topbar{

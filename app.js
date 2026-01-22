@@ -50,6 +50,19 @@ function clampInt(v){
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 }
 
+function normalizeUrl(u){
+  const s = (u || "").trim();
+  if (!s) return "";
+  const low = s.toLowerCase();
+  if (low.startsWith("javascript:") || low.startsWith("data:")) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("www.")) return "https://" + s;
+  // Basic guess: if it looks like a domain, prefix https://
+  if (s.includes(".") && !s.includes(" ")) return "https://" + s;
+  return s;
+}
+
+
 function escapeHtml(str){
   return String(str)
     .replaceAll("&","&amp;")
@@ -146,6 +159,8 @@ function sanitizeData(d){
     }
     m.createdAt = m.createdAt || new Date().toISOString();
 
+    m.videoUrl = (typeof m.videoUrl === "string") ? normalizeUrl(m.videoUrl).slice(0, 600) : "";
+
     if (!m.playerStats || typeof m.playerStats !== "object") m.playerStats = {};
 
     if (Array.isArray(m.goals) && m.goals.length){
@@ -206,7 +221,11 @@ function computeMatchScore(m){
 function computeMatchVoteTally(m){
   const points = {};
   const pickedCount = {};
+  const firstCount = {};
+  const secondCount = {};
+  const thirdCount = {};
   const pts = [3,2,1];
+
   for (const v of (m.mvpVotes || [])){
     const picks = Array.isArray(v.picks) ? v.picks : [];
     for (let i=0;i<3;i++){
@@ -214,16 +233,49 @@ function computeMatchVoteTally(m){
       if (!pid) continue;
       points[pid] = (points[pid] || 0) + pts[i];
       pickedCount[pid] = (pickedCount[pid] || 0) + 1;
+      if (i===0) firstCount[pid] = (firstCount[pid] || 0) + 1;
+      if (i===1) secondCount[pid] = (secondCount[pid] || 0) + 1;
+      if (i===2) thirdCount[pid] = (thirdCount[pid] || 0) + 1;
     }
   }
-  return { points, pickedCount };
+  return { points, pickedCount, firstCount, secondCount, thirdCount };
 }
+
+function computeMatchMvpWinner(m, nameOf=(pid)=>pid){
+  const tally = computeMatchVoteTally(m);
+  const participants = [...new Set([...(m.teamA||[]), ...(m.teamB||[])])];
+
+  let bestId = null;
+  let best = { pts:-1, first:-1, picked:-1, name:"" };
+
+  for (const pid of participants){
+    const pts = tally.points[pid] || 0;
+    if (pts <= 0) continue;
+    const first = tally.firstCount[pid] || 0;
+    const picked = tally.pickedCount[pid] || 0;
+    const name = String(nameOf(pid) || "").toLowerCase();
+
+    const better =
+      (pts > best.pts) ||
+      (pts === best.pts && first > best.first) ||
+      (pts === best.pts && first === best.first && picked > best.picked) ||
+      (pts === best.pts && first === best.first && picked === best.picked && (bestId===null || name < best.name));
+
+    if (better){
+      best = { pts, first, picked, name };
+      bestId = pid;
+    }
+  }
+
+  return { winnerId: bestId, winnerPoints: best.pts, tally };
+}
+
 
 function computeStats(data){
   const playersById = new Map(data.players.map(p => [p.id, p]));
   const stats = {};
   for (const p of data.players){
-    stats[p.id] = { id:p.id, name:p.name, played:0, goals:0, assists:0, mvpPoints:0, mvp1:0, mvp2:0, mvp3:0, wins:0, draws:0, losses:0, gf:0, ga:0 };
+    stats[p.id] = { id:p.id, name:p.name, played:0, goals:0, assists:0, mvpStars:0, mvpPoints:0, mvp1:0, mvp2:0, mvp3:0, wins:0, draws:0, losses:0, gf:0, ga:0 };
   }
 
   for (const m of data.matches){
@@ -263,12 +315,16 @@ function computeStats(data){
         if (i===2) stats[pid].mvp3 += 1;
       }
     }
+
+
+    const w = computeMatchMvpWinner(m, pid => playersById.get(pid)?.name || "");
+    if (w.winnerId && stats[w.winnerId]) stats[w.winnerId].mvpStars += 1;
   }
 
   const list = Object.values(stats);
   const byGoals = [...list].sort((a,b)=> b.goals - a.goals || b.assists - a.assists || b.mvpPoints - a.mvpPoints);
   const byAssists = [...list].sort((a,b)=> b.assists - a.assists || b.goals - a.goals || b.mvpPoints - a.mvpPoints);
-  const byMvp = [...list].sort((a,b)=> b.mvpPoints - a.mvpPoints || b.goals - a.goals || b.assists - a.assists);
+  const byMvp = [...list].sort((a,b)=> (b.mvpStars - a.mvpStars) || (b.mvpPoints - a.mvpPoints) || (b.goals - a.goals) || (b.assists - a.assists));
 
   return { playersById, statsById: stats, byGoals, byAssists, byMvp };
 }
@@ -411,7 +467,7 @@ function renderPlayers(){
   const rows = data.players
     .map(p => ({ p, s: stats.statsById[p.id] }))
     .filter(x => !q || x.p.name.toLowerCase().includes(q))
-    .sort((a,b)=> (b.s.mvpPoints - a.s.mvpPoints) || (b.s.goals - a.s.goals) || a.p.name.localeCompare(b.p.name));
+    .sort((a,b)=> (b.s.mvpStars - a.s.mvpStars) || (b.s.mvpPoints - a.s.mvpPoints) || (b.s.goals - a.s.goals) || a.p.name.localeCompare(b.p.name));
 
   $("#playersTbody").innerHTML = rows.length ? rows.map(({p,s}) => `
     <tr>
@@ -419,7 +475,7 @@ function renderPlayers(){
       <td>${s.played}</td>
       <td>${s.goals}</td>
       <td>${s.assists}</td>
-      <td>${s.mvpPoints}</td>
+      <td>${s.mvpStars}</td>
       <td>${s.wins}-${s.draws}-${s.losses}</td>
             <td class="row" style="gap:8px; justify-content:flex-end;"><button class="btn btn-small" data-rename-player="${p.id}">Editar</button><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
     </tr>
@@ -482,13 +538,14 @@ function renderNewMatch(){
   if (!state.draft){
     if (state.editingMatchId){
       const m = state.data.matches.find(x => x.id === state.editingMatchId);
-      state.draft = m ? { id:m.id, date:m.date, playersPerTeam: m.playersPerTeam || 5, activeTeam: 'A', teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||new Date().toISOString() }
-                      : { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
+      state.draft = m ? { id:m.id, date:m.date, videoUrl: (m.videoUrl||""), playersPerTeam: m.playersPerTeam || 5, activeTeam: 'A', teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||new Date().toISOString() }
+                      : { id:uuid(), date:toISODateInput(new Date()), videoUrl: "", playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
     } else {
-      state.draft = { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
+      state.draft = { id:uuid(), date:toISODateInput(new Date()), videoUrl: "", playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
     }
   }
   const d = state.draft;
+  if (d.videoUrl === undefined || d.videoUrl === null) d.videoUrl = "";
   if (!d.playersPerTeam) d.playersPerTeam = 7;
   if (!d.activeTeam) d.activeTeam = 'A';
   const isEdit = !!state.editingMatchId;
@@ -563,6 +620,15 @@ function renderNewMatch(){
 
     <div class="hr"></div>
 
+    <div class="row" style="align-items:end; gap:10px;">
+      <div style="flex:1; min-width:260px;">
+        <div class="h2">Video</div>
+        <input class="input" id="matchVideo" placeholder="Pegá un link (YouTube, Drive, etc.)" value="${escapeHtml(d.videoUrl||"")}" />
+      </div>
+    </div>
+
+    <div class="hr"></div>
+
     <div class="newmatch-layout">
       <div class="team-select nm-team-select">
         <div class="h2" style="margin:0;">Cargando en</div>
@@ -582,6 +648,7 @@ function renderNewMatch(){
     </div>`;
 
   $("#matchDate").onchange = (e) => { d.date = e.target.value; };
+  $("#matchVideo").oninput = (e) => { d.videoUrl = e.target.value; };
   $("#playersPerTeam").onchange = (e) => { d.playersPerTeam = clampInt(e.target.value); autoSwitchTeamIfNeeded(); renderNewMatch(); };
   $("#selTeamA").onclick = () => { d.activeTeam = "A"; renderNewMatch(); };
   $("#selTeamB").onclick = () => { d.activeTeam = "B"; renderNewMatch(); };
@@ -616,13 +683,14 @@ function renderNewMatch(){
       m.playersPerTeam = d.playersPerTeam || 5;
       m.teamA = [...d.teamA];
       m.teamB = [...d.teamB];
+      m.videoUrl = normalizeUrl(d.videoUrl).slice(0, 600);
       normalizeMatchAfterEdit(m);
       state.draft = null;
       state.editingMatchId = null;
       await persist("Partido actualizado");
       setView("matches");
     } else {
-      state.data.matches.push({ id:d.id, date:d.date, playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
+      state.data.matches.push({ id:d.id, date:d.date, videoUrl: normalizeUrl(d.videoUrl).slice(0, 600), playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
       state.draft = null;
       await persist("Partido creado");
       setView("matches");
@@ -735,7 +803,7 @@ function renderNewMatch(){
 function isInteractiveTarget(target){
   return !!(
     target.closest("button, a, input, select, textarea, label, [role='button']") ||
-    target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player], [data-toggle-expand]") ||
+    target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player]") ||
     target.closest("table")
   );
 }
@@ -761,15 +829,6 @@ function renderMatches(){
       state.ui.expandedMatches.delete(id);
       state.ui.expandedVotes.delete(id);
       await persist("Partido eliminado");
-      return;
-    }
-
-    const btnExpand = e.target.closest("[data-toggle-expand]");
-    if (btnExpand){
-      const id = btnExpand.dataset.toggleExpand;
-      if (state.ui.expandedMatches.has(id)) state.ui.expandedMatches.delete(id);
-      else state.ui.expandedMatches.add(id);
-      renderMatches();
       return;
     }
 
@@ -824,7 +883,9 @@ function renderMatches(){
     const expanded = state.ui.expandedMatches.has(m.id);
     const showVotes = state.ui.expandedVotes.has(m.id);
     const { a, b } = computeMatchScore(m);
-    const tally = computeMatchVoteTally(m);
+    const mvp = computeMatchMvpWinner(m, playerName);
+    const mvpWinnerId = mvp.winnerId;
+    const tally = mvp.tally;
     const winner = a === b ? null : (a > b ? 'A' : 'B');
     const votesCount = (m.mvpVotes || []).length;
 
@@ -836,10 +897,10 @@ function renderMatches(){
               <div class="scoreline">
                 ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
               </div>
-              <div class="match-meta">Votos: ${votesCount}</div>
+              <div class="match-meta">Votos: ${votesCount}${m.videoUrl ? " · 🎥" : ""}</div>
             </div>
             <div class="row" style="gap:8px; justify-content:flex-end;">
-              <button class="btn btn-small" data-toggle-expand="${m.id}">Expandir</button>
+              ${m.videoUrl ? `<a class="btn btn-small" href="${escapeHtml(m.videoUrl)}" target="_blank" rel="noopener">🎥 Video</a>` : ``}
               <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
               <button class="btn btn-danger btn-small" data-del-match="${m.id}">Eliminar</button>
             </div>
@@ -859,9 +920,9 @@ function renderMatches(){
         const hasVotes = votes > 0;
 
         return `
-          <button class="player-row ${hasVotes ? "has-votes" : ""}"
+          <button class="player-row ${hasVotes ? "has-votes" : ""} ${pid===mvpWinnerId ? "mvp-winner" : ""}"
             data-edit-player="${pid}" data-match-id="${m.id}">
-            <span><b>${escapeHtml(playerName(pid))}</b>${hasVotes ? ` <span class="icon-pill">⭐ ${pts}</span>` : ""}</span>
+            <span><b>${escapeHtml(playerName(pid))}</b>${pid===mvpWinnerId ? ` <span class="icon-pill">🌟 MVP</span>${pts ? ` <span class="icon-pill">⭐ ${pts}</span>` : ""}` : (hasVotes ? ` <span class="icon-pill">⭐ ${pts}</span>` : "")}</span>
             <span class="icons">
               ${g ? `<span class="icon-pill">G ${g}</span>` : ""}
               ${as ? `<span class="icon-pill">A ${as}</span>` : ""}
@@ -894,10 +955,10 @@ function renderMatches(){
             <div class="scoreline">
               ${fmtDate(m.date)} · A <span class="big teamA ${winner==='A' ? 'winner-pill' : ''}">${a}</span> — <span class="big teamB ${winner==='B' ? 'winner-pill' : ''}">${b}</span> B
             </div>
-            <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · ${m.playersPerTeam ? (m.playersPerTeam+"v"+m.playersPerTeam+" · ") : ""}Votos: ${votesCount}</div>
+            <div class="match-meta">${(m.teamA?.length||0)} vs ${(m.teamB?.length||0)} · ${m.playersPerTeam ? (m.playersPerTeam+"v"+m.playersPerTeam+" · ") : ""}Votos: ${votesCount}${m.videoUrl ? " · 🎥" : ""}</div>
           </div>
           <div class="row" style="gap:8px; justify-content:flex-end;">
-            <button class="btn btn-small" data-toggle-expand="${m.id}">Colapsar</button>
+            ${m.videoUrl ? `<a class="btn btn-small" href="${escapeHtml(m.videoUrl)}" target="_blank" rel="noopener">🎥 Video</a>` : ``}
             <button class="btn btn-small" data-edit-match="${m.id}">Editar</button>
             <button class="btn btn-primary btn-small" data-vote="${m.id}">Votar</button>
             <button class="btn btn-small" data-toggle-votes="${m.id}">${showVotes ? "Ocultar votos" : "Ver votos"}</button>
@@ -989,8 +1050,8 @@ function renderMatches(){
 
         <div class="hr"></div>
 
-        <div class="h2">Votante</div>
-        <select class="select" id="voterId"><option value="">Elegí jugador…</option>${voterOpts}</select>
+        <div class="h2">Quien está botando</div>
+        <select class="select" id="voterId"><option value="">Quien está botando…</option>${voterOpts}</select>
 
         <div class="hr"></div>
 
@@ -1012,7 +1073,7 @@ function renderMatches(){
     $("#close", modal).onclick = () => modal.remove();
     $("#save", modal).onclick = async () => {
       const voterId = ($("#voterId", modal).value || "").trim();
-      if (!voterId) return toast("Elegí quién vota");
+      if (!voterId) return toast("Decí quién está botando");
       if (!participants.includes(voterId)) return toast("Votante inválido");
 
       const p1 = $("#p1", modal).value || null;
@@ -1043,31 +1104,33 @@ function renderLeaderboard(){
   const el = $("#viewLeaderboard");
   const s = state.stats;
 
-  function topTable(title, arr, colA, colB){
-    const rows = arr.slice(0,10).map((p, i) => `
-      <tr>
-        <td>${i+1}</td>
-        <td><b>${escapeHtml(p.name)}</b></td>
-        <td>${colA(p)}</td>
-        <td>${colB(p)}</td>
-      </tr>
-    `).join("");
-    return `
-      <div class="match-card" style="margin-bottom:12px;">
-        <div class="h2">${title}</div>
-        <table class="table" style="margin-top:8px;">
-          <thead><tr><th>#</th><th>Jugador</th><th>Principal</th><th>Extra</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="4">—</td></tr>`}</tbody>
-        </table>
-      </div>
-    `;
-  }
+  function topTable({ title, arr, mainLabel, mainValue, extraLabel=null, extraValue=null }){
+  const hasExtra = typeof extraValue === "function";
+  const rows = arr.slice(0,10).map((p, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><b>${escapeHtml(p.name)}</b></td>
+      <td>${mainValue(p)}</td>
+      ${hasExtra ? `<td>${extraValue(p)}</td>` : ``}
+    </tr>
+  `).join("");
+
+  return `
+    <div class="match-card" style="margin-bottom:12px;">
+      <div class="h2">${title}</div>
+      <table class="table" style="margin-top:8px;">
+        <thead><tr><th>#</th><th>Jugador</th><th>${mainLabel}</th>${hasExtra ? `<th>${extraLabel || ""}</th>` : ``}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${hasExtra ? 4 : 3}">—</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
 
   el.innerHTML = `
     <div class="h1">Rankings</div>
-    ${topTable("Goleadores", s.byGoals, p=> `${p.goals}`, p=> `A ${p.assists}`)}
-    ${topTable("Asistidores", s.byAssists, p=> `${p.assists}`, p=> `G ${p.goals}`)}
-    ${topTable("MVP", s.byMvp, p=> `${p.mvpPoints}`, p=> `🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}`)}
+    ${topTable({ title:"Goleadores", arr:s.byGoals, mainLabel:"Goles", mainValue:p=> `${p.goals}` })}
+    ${topTable({ title:"Asistidores", arr:s.byAssists, mainLabel:"Asistencias", mainValue:p=> `${p.assists}` })}
+    ${topTable({ title:"MVP", arr:s.byMvp, mainLabel:"MVP", mainValue:p=> `${p.mvpStars}`, extraLabel:"Votos", extraValue:p=> `${p.mvpPoints} · 🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}` })}
   `;
 }
 
