@@ -263,9 +263,15 @@ body::before{
 .overlay{
   position:fixed; inset:0;
   display:grid; place-items:center;
-  background: rgba(0,0,0,.45);
-  backdrop-filter: blur(6px);
+  background: rgba(0,0,0,.72);
+  backdrop-filter: blur(2px);
   z-index: 50;
+}
+
+/* Modal: menos transparencia (overlay + tarjeta) */
+.overlay .card{
+  background: rgba(10,14,30,.96);
+  border: 1px solid rgba(255,255,255,.14);
 }
 .spinner{
   width: 42px; height: 42px;
