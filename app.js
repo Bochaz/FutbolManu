@@ -261,6 +261,10 @@ function sanitizeData(d){
    COMPUTED
    ============================ */
 function computeMatchScore(m){
+  // If a manual score was set, use it (results & standings rely on this)
+  if (m && m.manualScore && (m.manualScore.a !== undefined || m.manualScore.b !== undefined)){
+    return { a: clampInt(m.manualScore.a), b: clampInt(m.manualScore.b) };
+  }
   const sumGoals = (ids) => (ids || []).reduce((acc, pid) => {
     const ps = m.playerStats?.[pid];
     return acc + (ps ? clampInt(ps.goals) : 0);
@@ -857,7 +861,7 @@ function renderNewMatch(){
 function isInteractiveTarget(target){
   return !!(
     target.closest("button, a, input, select, textarea, label, [role='button']") ||
-    target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player]") ||
+    target.closest("[data-del-match], [data-edit-match], [data-vote], [data-toggle-votes], [data-edit-player], [data-edit-score]") ||
     target.closest("table")
   );
 }
@@ -889,6 +893,15 @@ function renderMatches(){
       }
       m.videoUrl = canon;
       await persist("Video guardado");
+      return;
+    }
+
+    const scoreBtn = e.target.closest("[data-edit-score]");
+    if (scoreBtn){
+      const id = scoreBtn.dataset.editScore;
+      const m = state.data.matches.find(x => x.id === id);
+      if (!m) return;
+      openScoreModal(m);
       return;
     }
 
@@ -963,9 +976,9 @@ function renderMatches(){
             <div class="match-score">
               <div class="scoreline">
                 <span class="team-tag teamA ${winner==='A' ? 'winner-pill' : ''}">A</span>
-                <span class="big teamA">${a}</span>
+                <button class="big teamA score-num" type="button" data-edit-score="${m.id}" data-team="A">${a}</button>
                 <span class="dash">—</span>
-                <span class="big teamB">${b}</span>
+                <button class="big teamB score-num" type="button" data-edit-score="${m.id}" data-team="B">${b}</button>
                 <span class="team-tag teamB ${winner==='B' ? 'winner-pill' : ''}">B</span>
               </div>
             </div>
@@ -1028,9 +1041,9 @@ function renderMatches(){
           <div class="match-score">
             <div class="scoreline">
               <span class="team-tag teamA ${winner==='A' ? 'winner-pill' : ''}">A</span>
-              <span class="big teamA">${a}</span>
+              <button class="big teamA score-num" type="button" data-edit-score="${m.id}" data-team="A">${a}</button>
               <span class="dash">—</span>
-              <span class="big teamB">${b}</span>
+              <button class="big teamB score-num" type="button" data-edit-score="${m.id}" data-team="B">${b}</button>
               <span class="team-tag teamB ${winner==='B' ? 'winner-pill' : ''}">B</span>
             </div>
           </div>
@@ -1074,13 +1087,146 @@ function renderMatches(){
     `;
   }
 
+
+  /* ---------- Number wheel (scroll picker) ---------- */
+  function wheelHTML(name, min, max, value){
+    const v = clampInt(value);
+    const items = [];
+    for (let i=min; i<=max; i++){
+      items.push(`<div class="num-item" data-val="${i}">${i}</div>`);
+    }
+    return `
+      <div class="num-picker">
+        <div class="num-wheel-wrap">
+          <div class="num-wheel" data-wheel="${name}" data-min="${min}" data-max="${max}" data-value="${v}">
+            ${items.join("")}
+          </div>
+          <div class="num-wheel-frame" aria-hidden="true"></div>
+        </div>
+        <div class="num-readout"><span data-wheel-readout="${name}">${v}</span></div>
+      </div>
+    `;
+  }
+
+  function initWheel(modalEl, name, value){
+    const wheel = modalEl.querySelector(`[data-wheel="${name}"]`);
+    const readout = modalEl.querySelector(`[data-wheel-readout="${name}"]`);
+    if (!wheel) return;
+
+    const min = parseInt(wheel.dataset.min || "0", 10);
+    const max = parseInt(wheel.dataset.max || "20", 10);
+    const itemH = 44;  // must match CSS
+    const pad = 88;    // must match CSS padding-top/bottom
+
+    const clamp = (n) => Math.max(min, Math.min(max, n));
+
+    const setActive = (n) => {
+      const items = wheel.querySelectorAll(".num-item");
+      items.forEach(it => it.classList.toggle("is-active", parseInt(it.dataset.val,10) === n));
+      wheel.dataset.value = String(n);
+      if (readout) readout.textContent = String(n);
+    };
+
+    const scrollToValue = (n, smooth=false) => {
+      n = clamp(n);
+      // scrollTop where item n is centered
+      const idx = n - min;
+      const target = pad + idx*itemH - (wheel.clientHeight/2 - itemH/2);
+      wheel.scrollTo({ top: target, behavior: smooth ? "smooth" : "auto" });
+      setActive(n);
+    };
+
+    // click to select
+    wheel.onclick = (e) => {
+      const it = e.target.closest(".num-item");
+      if (!it) return;
+      const n = clamp(parseInt(it.dataset.val,10));
+      scrollToValue(n, true);
+    };
+
+    // snap on scroll end
+    let tm = null;
+    wheel.addEventListener("scroll", () => {
+      const center = wheel.scrollTop + wheel.clientHeight/2;
+      const idx = Math.round((center - pad - itemH/2) / itemH);
+      const n = clamp(min + idx);
+      setActive(n);
+      clearTimeout(tm);
+      tm = setTimeout(() => scrollToValue(n, true), 90);
+    }, { passive:true });
+
+    // init
+    scrollToValue(clampInt(value), false);
+  }
+
+  function wheelValue(modalEl, name){
+    const wheel = modalEl.querySelector(`[data-wheel="${name}"]`);
+    return wheel ? clampInt(wheel.dataset.value) : 0;
+  }
+
+  function openScoreModal(match){
+    const sumGoals = (ids) => (ids || []).reduce((acc, pid) => {
+      const ps = match.playerStats?.[pid];
+      return acc + (ps ? clampInt(ps.goals) : 0);
+    }, 0);
+
+    const auto = { a: sumGoals(match.teamA), b: sumGoals(match.teamB) };
+    const cur = match.manualScore ? { a: clampInt(match.manualScore.a), b: clampInt(match.manualScore.b) } : auto;
+
+    const modal = document.createElement("div");
+    modal.className = "overlay";
+    modal.innerHTML = `
+      <div class="card" style="width:min(760px,92vw); padding:16px; border-radius:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div>
+            <div class="h1" style="margin:0;">Editar resultado</div>
+            <div class="muted" style="font-weight:900; margin-top:4px;">${fmtDate(match.date)}</div>
+          </div>
+          <button class="btn" id="close">Cerrar</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="gap:18px; align-items:stretch; flex-wrap:wrap;">
+          <div class="col" style="min-width:220px;">
+            <div class="h2">Equipo A</div>
+            ${wheelHTML("scoreA", 0, 30, cur.a)}
+          </div>
+          <div class="col" style="min-width:220px;">
+            <div class="h2">Equipo B</div>
+            ${wheelHTML("scoreB", 0, 30, cur.b)}
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="save">Guardar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    initWheel(modal, "scoreA", cur.a);
+    initWheel(modal, "scoreB", cur.b);
+
+    $("#close", modal).onclick = () => modal.remove();
+    $("#save", modal).onclick = async () => {
+      const a = wheelValue(modal, "scoreA");
+      const b = wheelValue(modal, "scoreB");
+      match.manualScore = { a, b };
+      modal.remove();
+      await persist("Resultado guardado");
+    };
+  }
+
   function openPlayerStatModal(match, pid){
     const current = match.playerStats?.[pid] || { goals:0, assists:0 };
 
     const modal = document.createElement("div");
     modal.className = "overlay";
     modal.innerHTML = `
-      <div class="card" style="width:min(720px,92vw); padding:16px; border-radius:18px;">
+      <div class="card" style="width:min(760px,92vw); padding:16px; border-radius:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
           <div><div class="h1" style="margin:0;">${escapeHtml(playerName(pid))}</div></div>
           <button class="btn" id="close">Cerrar</button>
@@ -1088,14 +1234,14 @@ function renderMatches(){
 
         <div class="hr"></div>
 
-        <div class="row" style="align-items:end;">
-          <div class="col">
+        <div class="row" style="gap:18px; align-items:stretch; flex-wrap:wrap;">
+          <div class="col" style="min-width:220px;">
             <div class="h2">Goles</div>
-            <input class="input" type="number" min="0" id="goals" value="${clampInt(current.goals)}" />
+            ${wheelHTML("goals", 0, 20, clampInt(current.goals))}
           </div>
-          <div class="col">
+          <div class="col" style="min-width:220px;">
             <div class="h2">Asistencias</div>
-            <input class="input" type="number" min="0" id="assists" value="${clampInt(current.assists)}" />
+            ${wheelHTML("assists", 0, 20, clampInt(current.assists))}
           </div>
         </div>
 
@@ -1108,10 +1254,13 @@ function renderMatches(){
     `;
     document.body.appendChild(modal);
 
+    initWheel(modal, "goals", clampInt(current.goals));
+    initWheel(modal, "assists", clampInt(current.assists));
+
     $("#close", modal).onclick = () => modal.remove();
     $("#save", modal).onclick = async () => {
-      const g = clampInt($("#goals", modal).value);
-      const a = clampInt($("#assists", modal).value);
+      const g = wheelValue(modal, "goals");
+      const a = wheelValue(modal, "assists");
       match.playerStats = match.playerStats || {};
       match.playerStats[pid] = { goals: g, assists: a };
       modal.remove();
