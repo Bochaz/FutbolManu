@@ -1202,3 +1202,103 @@ select.select option{
     white-space: nowrap !important;
   }
 }
+
+
+/* ===== Mobile fixes v3 ===== */
+@media (max-width: 720px){
+  /* Topbar: que entren los 4 botones sin scroll */
+  .topbar{
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px !important;
+    padding: 8px 8px !important;
+  }
+  .brand{
+    min-width: 0;
+    margin-right: 0;
+  }
+  .brand-title{
+    font-size: 13px !important;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+  .tabs{
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px !important;
+    min-width: 0;
+    overflow: visible !important;
+    padding-bottom: 0 !important;
+  }
+  .tab{
+    min-width: 0;
+    width: 100%;
+    padding: 7px 6px !important;
+    font-size: 10px !important;
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* Rankings mobile: valor pegado al borde derecho de cada tarjeta */
+  .rank-card-goals .rank-table,
+  .rank-card-assists .rank-table{
+    display: block !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  .rank-card-goals .rank-table colgroup,
+  .rank-card-assists .rank-table colgroup{
+    display: none !important;
+  }
+  .rank-card-goals .rank-table thead,
+  .rank-card-goals .rank-table tbody,
+  .rank-card-assists .rank-table thead,
+  .rank-card-assists .rank-table tbody{
+    display: block;
+    width: 100%;
+  }
+  .rank-card-goals .rank-table tr,
+  .rank-card-assists .rank-table tr{
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    align-items: center;
+    width: 100%;
+  }
+  .rank-card-goals .rank-table th,
+  .rank-card-goals .rank-table td,
+  .rank-card-assists .rank-table th,
+  .rank-card-assists .rank-table td{
+    min-width: 0;
+  }
+  .rank-card-goals .rank-table th:nth-child(1),
+  .rank-card-goals .rank-table td:nth-child(1),
+  .rank-card-assists .rank-table th:nth-child(1),
+  .rank-card-assists .rank-table td:nth-child(1){
+    text-align: center;
+  }
+  .rank-card-goals .rank-table th:nth-child(2),
+  .rank-card-goals .rank-table td:nth-child(2),
+  .rank-card-assists .rank-table th:nth-child(2),
+  .rank-card-assists .rank-table td:nth-child(2){
+    min-width: 0 !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 8px !important;
+  }
+  .rank-card-goals .rank-table th:nth-child(3),
+  .rank-card-goals .rank-table td:nth-child(3),
+  .rank-card-assists .rank-table th:nth-child(3),
+  .rank-card-assists .rank-table td:nth-child(3){
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    justify-self: end;
+    text-align: right !important;
+    white-space: nowrap !important;
+    padding-left: 4px !important;
+    padding-right: 0 !important;
+  }
+}
