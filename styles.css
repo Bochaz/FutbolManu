@@ -1098,32 +1098,18 @@ select.select option{
   }
 
   /* Rankings mobile: números bien a la derecha */
-  .rank-card-goals .rank-table,
-  .rank-card-assists .rank-table{
-    table-layout: fixed;
-    width: 100%;
-  }
-  .rank-card-goals .rank-table colgroup col:nth-child(1),
-  .rank-card-assists .rank-table colgroup col:nth-child(1){
-    width: 40px !important;
-  }
-  .rank-card-goals .rank-table colgroup col:nth-child(3),
-  .rank-card-assists .rank-table colgroup col:nth-child(3){
-    width: 64px !important;
-  }
   .rank-card-goals .rank-table th:nth-child(3),
   .rank-card-goals .rank-table td:nth-child(3),
   .rank-card-assists .rank-table th:nth-child(3),
   .rank-card-assists .rank-table td:nth-child(3){
     text-align: right !important;
     white-space: nowrap;
-    padding-right: 4px;
   }
 
   /* Jugadores mobile: agregar + buscar en una sola línea */
   .players-toolbar{
     display:grid !important;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, .5fr);
+    grid-template-columns: minmax(0, 2fr) auto minmax(0, 1fr);
     gap: 6px !important;
     align-items:end !important;
   }

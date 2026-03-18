@@ -678,7 +678,7 @@ function renderNewMatch(){
 
     <div class="newmatch-layout">
       <div class="team-select nm-team-select">
-        <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
+                <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
         <button class="team-toggle teamB ${d.activeTeam==='B' ? 'is-active' : ''}" id="selTeamB">Equipo B</button>
       </div>
 
