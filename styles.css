@@ -88,7 +88,7 @@ body::before{
 }
 
 .main{
-  max-width: 1100px;
+  max-width: 1420px;
   margin: 16px auto 60px;
   padding: 0 14px;
 }
@@ -600,46 +600,92 @@ select.select option{
 
 
 @media (max-width: 720px){
-  .topbar{ padding: 10px 12px; }
+  .topbar{ padding: 8px 10px; }
+  .logo-mark{ width:38px; height:38px; border-radius:12px; font-size:13px; }
+  .brand-title{ font-size:15px; }
   .brand-sub{ display:none; }
   .tabs{
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 6px;
+    padding-bottom: 4px;
+    gap:6px;
   }
-  .tab{ white-space: nowrap; padding: 9px 11px; font-size: 12px; }
-  .main{ margin: 10px auto 70px; padding: 0 10px; }
-  .card{ padding: 12px; }
-  .btn{ padding: 10px 12px; }
-  .btn-small{ padding: 8px 10px; }
+  .tab{ white-space: nowrap; padding: 8px 10px; font-size: 11px; }
+  .main{ margin: 8px auto 56px; padding: 0 8px; }
+  .card{ padding: 10px; border-radius: 14px; }
+  .h1{ font-size:18px; margin-bottom:8px; }
+  .h2{ font-size:11px; margin-bottom:6px; }
+  .btn{ padding: 8px 10px; font-size: 12px; border-radius: 10px; }
+  .btn-small{ padding: 6px 8px; font-size:11px; border-radius: 9px; }
+  .input, .select{ font-size: 14px; padding: 9px 10px; }
+  .row{ gap:8px; }
+  .panel{ padding: 8px; }
 
   /* Nuevo Partido */
-  .newmatch-layout{ grid-template-columns: 1fr; gap: 12px; }
-  .teams-right{ grid-template-columns: 1fr; gap: 12px; }
-  .nm-team-select{ margin-bottom: 4px; }
-  .team-toggle{ padding: 10px 12px; }
-  .player-list{ max-height: 46vh; overflow:auto; }
+  .newmatch-layout{ grid-template-columns: 1fr; gap: 10px; }
+  .teams-right{ grid-template-columns: 1fr; gap: 10px; }
+  .nm-team-select{ margin-bottom: 2px; }
+  .team-toggle{ padding: 8px 10px; font-size: 12px; }
+  .player-list,
   .dropzone.teamlist{
-  max-height: 520px;
-  overflow-y:auto;
-  overflow-x:hidden;
- max-height: 34vh; overflow-y:auto;
-  overflow-x:hidden; }
-  .input, .select{ font-size: 15px; }
+    max-height: 32vh;
+    overflow-y:auto;
+    overflow-x:hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  .player-list{ padding-right: 2px; }
+  .player-item,
+  .player-chip,
+  .slot-empty{ padding: 8px 10px; font-size: 13px; }
+  .dropzone{ padding: 8px; min-height: 72px; }
+  .team-status{ margin-top:6px; font-size:11px; }
 
   /* Partidos */
-  .match-header{ grid-template-columns: 1fr; align-items: stretch; gap: 10px; }
+  .match-card{ padding: 10px; margin-bottom: 10px; }
+  .match-header{ grid-template-columns: 1fr; align-items: stretch; gap: 8px; }
   .match-left{ grid-column:auto; }
+  .match-date{ font-size: 18px; }
+  .match-meta{ font-size: 11px; gap:6px; }
   .match-score{ grid-column:auto; justify-self:center; }
-  .match-actions{ grid-column:auto; justify-self:start; flex-wrap:wrap; }
-  .scoreline{ font-size: 22px; }
-  .scoreline .big{ padding: 6px 12px; margin: 0 6px; min-width: 40px; }
-  .table{ display:block; overflow-x:auto; }
-  .table th, .table td{ padding: 8px 8px; }
+  .match-actions{ grid-column:auto; justify-self:start; flex-wrap:wrap; gap:6px !important; }
+  .match-card:not(.is-expanded) .match-actions{ display:none; }
+  .scoreline{ font-size: 20px; }
+  .scoreline .big{ padding: 5px 10px; margin: 0 5px; min-width: 36px; font-size: 21px; }
+  .team-tag{ padding: 5px 9px; font-size: 14px; }
+  .detail-box{ padding: 8px; margin-top: 8px; }
+
+  /* Tablas */
+  .table{ display:block; overflow-x:auto; border-radius: 12px; }
+  .table th, .table td{ padding: 7px 6px; font-size: 12px; }
+  .players-table th:nth-child(6),
+  .players-table td:nth-child(6){ min-width: 70px; }
 
   /* Jugadores */
-  .table{ border-radius: 14px; }
+  .players-toolbar{ gap: 6px !important; }
+  .player-actions{ gap:6px; }
+  .player-action-btn{
+    min-width: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 9px;
+  }
+  .player-action-icon{ display:inline-flex; font-size: 13px; line-height:1; }
+  .player-action-label{ display:none; }
+
+  /* Rankings */
+  .rankings-grid{ grid-template-columns: 1fr; gap: 10px; }
+  .rank-card{ margin-bottom: 0 !important; }
+  .rank-title .h2{ font-size: 16px; }
+  .rank-icon{ width: 30px; height: 30px; font-size: 16px; }
+  .rank-table th:nth-child(3),
+  .rank-table td:nth-child(3),
+  .rank-table th:nth-child(4),
+  .rank-table td:nth-child(4){ text-align:right; }
+  .rank-table td:nth-child(2){ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 
@@ -795,28 +841,65 @@ select.select option{
   border: 1px solid rgba(255,255,255,.10);
   font-size: 18px;
 }
+
+
+
+
+/* Rankings: desktop más ancha y con mejor reparto */
+.leaderboard-shell{
+  width:100%;
+}
+.rankings-grid{
+  display:grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1.55fr);
+  gap: 14px;
+  align-items:start;
+}
+.rank-card{ min-width:0; }
+.rank-card .table{ width:100%; }
+.rank-card-mvp{ min-width:0; }
 .rank-table{
-  table-layout: fixed;
+  table-layout: auto;
+}
+.rank-table th:nth-child(2),
+.rank-table td:nth-child(2){
+  text-align:left;
+}
+.rank-table td:nth-child(2){
+  white-space: normal;
+  overflow: visible;
+  text-overflow: initial;
+  line-height: 1.2;
+  word-break: break-word;
+}
+.rank-table th:nth-child(3),
+.rank-table td:nth-child(3),
+.rank-table th:nth-child(4),
+.rank-table td:nth-child(4){
+  text-align:right;
+  white-space: nowrap;
 }
 .rank-table th:nth-child(1),
 .rank-table td:nth-child(1){
   text-align:center;
 }
-.rank-table th:nth-child(3),
-.rank-table td:nth-child(3){
+.players-table th:nth-child(6),
+.players-table td:nth-child(6){
+  white-space: nowrap;
   text-align:center;
 }
-.rank-table th:nth-child(4),
-.rank-table td:nth-child(4){
-  text-align:left;
+.player-actions{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:8px;
 }
-.rank-table td:nth-child(2){
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.player-actions-cell{ white-space:nowrap; }
+.player-action-btn{ min-width:auto; }
+.player-action-icon{ display:none; }
+@media (max-width: 720px){
+  .rankings-grid{ grid-template-columns: 1fr; }
 }
-
-
 
 /* ---------- Click to edit score (numbers) ---------- */
 .scoreline button.big{
@@ -885,210 +968,26 @@ select.select option{
 }
 
 
-/* ============================
-   Rankings grid + mobile compact overrides
-   ============================ */
-.rankings-grid{
-  display:grid;
-  grid-template-columns: 1fr;
-  gap:12px;
-}
-.rank-card{
-  height:100%;
-  margin-bottom:0 !important;
-}
-.rank-table.has-extra th:nth-child(4),
-.rank-table.has-extra td:nth-child(4){
-  white-space: nowrap;
-}
-.player-list,
-.dropzone.teamlist{
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-  scrollbar-width: thin;
-}
-
-@media (min-width: 980px){
-  .rankings-grid{
-    grid-template-columns: minmax(0, 0.84fr) minmax(0, 0.84fr) minmax(0, 1.62fr);
-    gap: 16px;
-    align-items:start;
-  }
-  .rankings-grid > .rank-card:nth-child(3) .rank-table td:nth-child(4),
-  .rankings-grid > .rank-card:nth-child(3) .rank-table th:nth-child(4){
-    font-size: 12px;
-  }
-}
-
+/* Final mobile overrides */
 @media (max-width: 720px){
-  body{
-    font-size: 14px;
+  .player-action-icon{ display:inline-flex !important; font-size:13px; line-height:1; }
+  .player-action-label{ display:none !important; }
+  .player-action-btn{
+    min-width: 30px !important;
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
+    border-radius: 9px;
   }
-  .topbar{
-    padding: 8px 10px;
-  }
-  .logo-mark{
-    width: 34px;
-    height: 34px;
-    font-size: 13px;
-  }
-  .brand{
-    margin-bottom: 8px;
-  }
-  .brand-title{
-    font-size: 15px;
-  }
-  .tabs{
-    gap: 5px;
-  }
-  .tab{
-    padding: 8px 10px;
-    font-size: 11px;
-  }
-  .main{
-    margin: 8px auto 52px;
-    padding: 0 8px;
-  }
-  .row{
-    gap: 8px;
-  }
-  .card,
-  .panel,
-  .team-box,
-  .match-card,
-  .detail-box{
-    padding: 9px;
-    border-radius: 13px;
-  }
-  .hr{
-    margin: 10px 0;
-  }
-  .h1{
-    font-size: 18px;
-    margin-bottom: 8px;
-  }
-  .h2{
-    font-size: 11px;
-    margin-bottom: 6px;
-  }
-  .input,
-  .select{
-    padding: 9px 10px;
-    font-size: 14px;
-  }
-  .btn{
-    padding: 8px 10px;
-    font-size: 12px;
-  }
-  .btn-small{
-    padding: 7px 9px;
-    font-size: 11px;
-  }
-  .nm-topbar{
-    gap: 6px !important;
-  }
-  .nm-topbar .h2,
-  .players-toolbar .h2{
-    font-size: 11px;
-    margin-bottom: 4px;
-  }
-  #matchDate, #playersPerTeam{
-    padding: 9px 10px;
-    font-size: 14px;
-  }
-  #btnSaveMatch, #btnResetDraft, #btnAddPlayer{
-    padding: 9px 10px !important;
-  }
-  .newmatch-layout,
-  .teams-right{
-    gap: 10px;
-  }
-  .team-toggle{
-    padding: 8px 10px;
-    font-size: 12px;
-  }
-  .player-list{
-    max-height: 42vh;
-  }
-  .dropzone.teamlist{
-    max-height: 30vh;
-    padding-right: 2px;
-  }
-  .player-chip{
-    padding: 7px 8px;
-    font-size: 13px;
-  }
-  .match-header{
-    gap: 8px;
-  }
-  .match-date{
-    line-height: 1.08;
-  }
-  .match-meta{
-    gap: 5px;
-    font-size: 11px;
-  }
-  .scoreline{
-    font-size: 21px;
-  }
-  .scoreline .big{
-    padding: 5px 11px;
-    margin: 0 5px;
-    min-width: 38px;
-  }
-  .team-tag{
-    padding: 5px 10px;
-    font-size: 15px;
-  }
-  .match-actions{
-    width: 100%;
-    gap: 6px;
-  }
-  .match-card.is-collapsed .match-actions{
-    display:none;
-  }
-  .match-actions .btn{
-    min-height: 34px;
-  }
-  .detail-box,
-  .video-embed{
-    margin-top: 8px;
-  }
-  .team-title{
-    gap: 6px;
-    margin-bottom: 6px;
-  }
-  .team-title span{
-    font-size: 11px;
-  }
-  .player-row{
-    padding: 7px 8px;
-    margin: 4px 0;
-    gap: 8px;
-    font-size: 13px;
-  }
-  .icon-pill{
-    padding: 3px 7px;
-    font-size: 11px;
-  }
-  .rank-title .h2{
-    font-size: 15px;
-  }
-  .rank-icon{
-    width: 28px;
-    height: 28px;
-    font-size: 15px;
-    border-radius: 10px;
-  }
-  .rank-table th,
-  .rank-table td{
-    padding: 7px 8px;
-    font-size: 12px;
+  .player-actions{ gap:6px; }
+  .rank-table td:nth-child(2){
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.15;
   }
-  .rank-table.no-extra th:nth-child(3),
-  .rank-table.no-extra td:nth-child(3){
-    text-align:right;
-  }
+  .rank-table th:nth-child(3),
+  .rank-table td:nth-child(3),
+  .rank-table th:nth-child(4),
+  .rank-table td:nth-child(4){ text-align:right; }
 }

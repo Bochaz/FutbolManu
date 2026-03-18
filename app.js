@@ -531,7 +531,7 @@ function renderPlayers(){
       <td>${s.assists}</td>
       <td>${s.mvpStars}</td>
       <td>${s.wins}-${s.draws}-${s.losses}</td>
-            <td class="row" style="gap:8px; justify-content:flex-end;"><button class="btn btn-small" data-rename-player="${p.id}">Editar</button><button class="btn btn-small btn-danger" data-del-player="${p.id}">Eliminar</button></td>
+            <td class="player-actions-cell"><div class="player-actions"><button class="btn btn-small player-action-btn" aria-label="Editar" title="Editar" data-rename-player="${p.id}"><span class="player-action-icon" aria-hidden="true">✏️</span><span class="player-action-label">Editar</span></button><button class="btn btn-small btn-danger player-action-btn" aria-label="Eliminar" title="Eliminar" data-del-player="${p.id}"><span class="player-action-icon" aria-hidden="true">🗑️</span><span class="player-action-label">Eliminar</span></button></div></td>
     </tr>
   `).join("") : `<tr><td colspan="7">Sin jugadores</td></tr>`;
 
@@ -804,13 +804,6 @@ function renderNewMatch(){
         renderNewMatch();
       });
     }
-
-    const touchScrollable = [playerList, ...$$(".dropzone.teamlist", root)].filter(Boolean);
-    touchScrollable.forEach(node => {
-      ["touchstart", "touchmove", "wheel"].forEach(evt => {
-        node.addEventListener(evt, (e) => { e.stopPropagation(); }, { passive: true });
-      });
-    });
   }
 
   function autoSwitchTeamIfNeeded(){
@@ -973,7 +966,7 @@ function renderMatches(){
 
     if (!expanded){
       return `
-        <div class="match-card is-collapsed" data-card-match="${m.id}">
+        <div class="match-card ${expanded ? "is-expanded" : ""}" data-card-match="${m.id}">
           <div class="match-header">
             <div class="match-left">
               <div class="match-date">${fmtDate(m.date)}</div>
@@ -1038,7 +1031,7 @@ function renderMatches(){
     ` : ``;
 
     return `
-      <div class="match-card is-expanded" data-card-match="${m.id}">
+      <div class="match-card ${expanded ? "is-expanded" : ""}" data-card-match="${m.id}">
         <div class="match-header">
           <div class="match-left">
             <div class="match-date">${fmtDate(m.date)}</div>
@@ -1347,54 +1340,56 @@ function renderLeaderboard(){
   const el = $("#viewLeaderboard");
   const s = state.stats;
 
-  function topTable({ title, icon="", arr, mainLabel, mainValue, extraLabel=null, extraValue=null }){
-  const hasExtra = typeof extraValue === "function";
-  const rows = arr.slice(0,10).map((p, i) => `
-    <tr>
-      <td>${i+1}</td>
-      <td><b>${escapeHtml(p.name)}</b></td>
-      <td>${mainValue(p)}</td>
-      ${hasExtra ? `<td>${extraValue(p)}</td>` : ``}
-    </tr>
-  `).join("");
+  function topTable({ title, icon="", arr, mainLabel, mainValue, extraLabel=null, extraValue=null, cardClass="" }){
+    const hasExtra = typeof extraValue === "function";
+    const rows = arr.slice(0,10).map((p, i) => `
+      <tr>
+        <td>${i+1}</td>
+        <td><b>${escapeHtml(p.name)}</b></td>
+        <td>${mainValue(p)}</td>
+        ${hasExtra ? `<td>${extraValue(p)}</td>` : ``}
+      </tr>
+    `).join("");
 
-  return `
-    <div class="match-card rank-card" style="margin-bottom:12px;">
-      <div class="rank-card-header">
-        <div class="rank-title">
-          ${icon ? `<span class="rank-icon" aria-hidden="true">${icon}</span>` : ``}
-          <div class="h2 rank-title-text" style="margin:0;">${title}</div>
+    return `
+      <div class="match-card rank-card ${cardClass}" style="margin-bottom:12px;">
+        <div class="rank-card-header">
+          <div class="rank-title">
+            ${icon ? `<span class="rank-icon" aria-hidden="true">${icon}</span>` : ``}
+            <div class="h2 rank-title-text" style="margin:0;">${title}</div>
+          </div>
         </div>
-      </div>
 
-      <table class="table rank-table" style="margin-top:8px;">
-        ${hasExtra ? `
-          <colgroup>
-            <col style="width:52px" />
-            <col />
-            <col style="width:110px" />
-            <col style="width:260px" />
-          </colgroup>
-        ` : `
-          <colgroup>
-            <col style="width:52px" />
-            <col />
-            <col style="width:110px" />
-          </colgroup>
-        `}
-        <thead><tr><th>#</th><th>Jugador</th><th>${mainLabel}</th>${hasExtra ? `<th>${extraLabel || ""}</th>` : ``}</tr></thead>
-        <tbody>${rows || `<tr><td colspan="${hasExtra ? 4 : 3}">—</td></tr>`}</tbody>
-      </table>
-    </div>
-  `;
-}
+        <table class="table rank-table ${hasExtra ? 'rank-table-has-extra' : ''}" style="margin-top:8px;">
+          ${hasExtra ? `
+            <colgroup>
+              <col style="width:48px" />
+              <col />
+              <col style="width:82px" />
+              <col style="width:188px" />
+            </colgroup>
+          ` : `
+            <colgroup>
+              <col style="width:48px" />
+              <col />
+              <col style="width:82px" />
+            </colgroup>
+          `}
+          <thead><tr><th>#</th><th>Jugador</th><th>${mainLabel}</th>${hasExtra ? `<th>${extraLabel || ""}</th>` : ``}</tr></thead>
+          <tbody>${rows || `<tr><td colspan="${hasExtra ? 4 : 3}">—</td></tr>`}</tbody>
+        </table>
+      </div>
+    `;
+  }
 
   el.innerHTML = `
-    <div class="h1">RANKINGS</div>
-    <div class="rankings-grid">
-      ${topTable({ title:"GOLEADORES", icon:"⚽️", arr:s.byGoals, mainLabel:"Goles", mainValue:p=> `${p.goals}` })}
-      ${topTable({ title:"ASISTIDORES", icon:"🤝", arr:s.byAssists, mainLabel:"Asistencias", mainValue:p=> `${p.assists}` })}
-      ${topTable({ title:"MVP", icon:"⭐", arr:s.byMvp, mainLabel:"MVP", mainValue:p=> `${p.mvpStars}`, extraLabel:"Votos", extraValue:p=> `${p.mvpPoints} · 🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}` })}
+    <div class="leaderboard-shell">
+      <div class="h1">RANKINGS</div>
+      <div class="rankings-grid">
+        ${topTable({ title:"GOLEADORES", icon:"⚽️", arr:s.byGoals, mainLabel:"Goles", mainValue:p=> `${p.goals}`, cardClass:"rank-card-goals" })}
+        ${topTable({ title:"ASISTIDORES", icon:"🤝", arr:s.byAssists, mainLabel:"Asistencias", mainValue:p=> `${p.assists}`, cardClass:"rank-card-assists" })}
+        ${topTable({ title:"MVP", icon:"⭐", arr:s.byMvp, mainLabel:"MVP", mainValue:p=> `${p.mvpStars}`, extraLabel:"Votos", extraValue:p=> `${p.mvpPoints} · 🥇${p.mvp1} 🥈${p.mvp2} 🥉${p.mvp3}`, cardClass:"rank-card-mvp" })}
+      </div>
     </div>
   `;
 }
@@ -1423,7 +1418,8 @@ function wireUI(){
     setView(btn.dataset.view);
   });
 
-  $("#btnSync").onclick = async () => {
+  const btnSync = $("#btnSync");
+  if (btnSync) btnSync.onclick = async () => {
     try{
       overlay(true, "Sincronizando…");
       saveLocal(state.data);
