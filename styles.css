@@ -52,16 +52,6 @@ body::before{
 }
 
 .brand{ display:flex; align-items:center; gap:12px; }
-.logo-mark{
-  width:42px; height:42px; border-radius: 14px;
-  display:grid; place-items:center;
-  background: linear-gradient(180deg, rgba(124,92,255,.30), rgba(37,198,216,.10));
-  border:1px solid rgba(255,255,255,.12);
-  box-shadow: var(--shadow);
-  font-size:14px;
-  font-weight:950;
-  letter-spacing:.6px;
-}
 .brand-title{ font-weight:950; letter-spacing:.2px; }
 .brand-sub{ color:var(--muted); font-size:12px; margin-top:2px; }
 
@@ -80,11 +70,6 @@ body::before{
 .tab.is-active{
   background: rgba(124,92,255,.20);
   border-color: rgba(124,92,255,.42);
-}
-.tab-ghost{
-  background: transparent;
-  border-color: rgba(255,255,255,.12);
-  color: var(--muted);
 }
 
 .main{
@@ -542,8 +527,6 @@ body::before{
 }
 
 
-.newmatch-right{ display:flex; flex-direction:column; gap:10px; align-self:start; }
-
 
 .select option{
   background: rgba(18,21,39,.98);
@@ -601,8 +584,7 @@ select.select option{
 
 @media (max-width: 720px){
   .topbar{ padding: 8px 10px; }
-  .logo-mark{ width:38px; height:38px; border-radius:12px; font-size:13px; }
-  .brand-title{ font-size:15px; }
+    .brand-title{ font-size:15px; }
   .brand-sub{ display:none; }
   .tabs{
     flex-wrap: nowrap;
@@ -996,9 +978,12 @@ select.select option{
 /* ===== Layout tuning: desktop card widths ===== */
 @media (min-width: 1024px){
   #viewPlayers,
-  #viewNewMatch,
   #viewMatches{
-    width: min(100%, 885px);
+    width: min(100%, 1180px);
+    margin-inline: auto;
+  }
+  #viewNewMatch{
+    width: min(100%, 1220px);
     margin-inline: auto;
   }
 
@@ -1109,7 +1094,7 @@ select.select option{
   /* Jugadores mobile: agregar + buscar en una sola línea */
   .players-toolbar{
     display:grid !important;
-    grid-template-columns: minmax(0, 2fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.1fr) auto minmax(0, .72fr);
     gap: 6px !important;
     align-items:end !important;
   }
@@ -1127,214 +1112,5 @@ select.select option{
     width: 78px;
     min-width: 78px;
     text-align: center;
-  }
-}
-
-
-/* ===== Final fixes requested ===== */
-@media (max-width: 720px){
-  /* Jugadores: Agregar + botón + Buscar en una sola línea,
-     con Buscar ocupando la mitad del ancho de Agregar */
-  .players-toolbar.row{
-    display: grid !important;
-    grid-template-columns: minmax(0, 2fr) auto minmax(0, 1fr) !important;
-    grid-auto-flow: column;
-    align-items: end !important;
-    column-gap: 6px !important;
-    row-gap: 6px !important;
-    flex-wrap: nowrap !important;
-  }
-  .players-toolbar.row > .players-field-add{
-    grid-column: 1 !important;
-    min-width: 0 !important;
-    width: auto !important;
-    flex: 0 1 auto !important;
-  }
-  .players-toolbar.row > .players-actions{
-    grid-column: 2 !important;
-    min-width: 0 !important;
-    width: auto !important;
-    flex: 0 0 auto !important;
-    align-self: end !important;
-  }
-  .players-toolbar.row > .players-field-search{
-    grid-column: 3 !important;
-    min-width: 0 !important;
-    width: auto !important;
-    flex: 0 1 auto !important;
-  }
-  .players-toolbar.row > *{ margin: 0 !important; }
-  .players-toolbar .input{ width: 100% !important; }
-  #btnAddPlayer{
-    width: auto !important;
-    min-width: 0 !important;
-    height: 38px !important;
-    padding: 0 10px !important;
-    white-space: nowrap !important;
-  }
-
-  /* Rankings: Goles y Asistencias pegados al borde derecho de la tarjeta */
-  .rank-card-goals .rank-table,
-  .rank-card-assists .rank-table{
-    width: 100% !important;
-    table-layout: fixed !important;
-  }
-  .rank-card-goals .rank-table th:nth-child(2),
-  .rank-card-goals .rank-table td:nth-child(2),
-  .rank-card-assists .rank-table th:nth-child(2),
-  .rank-card-assists .rank-table td:nth-child(2){
-    width: auto !important;
-    min-width: 0 !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .rank-card-goals .rank-table th:nth-child(3),
-  .rank-card-goals .rank-table td:nth-child(3),
-  .rank-card-assists .rank-table th:nth-child(3),
-  .rank-card-assists .rank-table td:nth-child(3){
-    width: 60px !important;
-    min-width: 60px !important;
-    max-width: 60px !important;
-    text-align: right !important;
-    padding-left: 4px !important;
-    padding-right: 8px !important;
-    white-space: nowrap !important;
-  }
-}
-
-
-/* ===== Mobile fixes v3 ===== */
-@media (max-width: 720px){
-  /* Topbar: que entren los 4 botones sin scroll */
-  .topbar{
-    display: grid !important;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 8px !important;
-    padding: 8px 8px !important;
-  }
-  .brand{
-    min-width: 0;
-    margin-right: 0;
-  }
-  .brand-title{
-    font-size: 13px !important;
-    line-height: 1.05;
-    white-space: nowrap;
-  }
-  .tabs{
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px !important;
-    min-width: 0;
-    overflow: visible !important;
-    padding-bottom: 0 !important;
-  }
-  .tab{
-    min-width: 0;
-    width: 100%;
-    padding: 7px 6px !important;
-    font-size: 10px !important;
-    line-height: 1.1;
-    text-align: center;
-    white-space: nowrap;
-  }
-
-  /* Rankings mobile: valor pegado al borde derecho de cada tarjeta */
-  .rank-card-goals .rank-table,
-  .rank-card-assists .rank-table{
-    display: block !important;
-    width: 100% !important;
-    table-layout: auto !important;
-  }
-  .rank-card-goals .rank-table colgroup,
-  .rank-card-assists .rank-table colgroup{
-    display: none !important;
-  }
-  .rank-card-goals .rank-table thead,
-  .rank-card-goals .rank-table tbody,
-  .rank-card-assists .rank-table thead,
-  .rank-card-assists .rank-table tbody{
-    display: block;
-    width: 100%;
-  }
-  .rank-card-goals .rank-table tr,
-  .rank-card-assists .rank-table tr{
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) auto;
-    align-items: center;
-    width: 100%;
-  }
-  .rank-card-goals .rank-table th,
-  .rank-card-goals .rank-table td,
-  .rank-card-assists .rank-table th,
-  .rank-card-assists .rank-table td{
-    min-width: 0;
-  }
-  .rank-card-goals .rank-table th:nth-child(1),
-  .rank-card-goals .rank-table td:nth-child(1),
-  .rank-card-assists .rank-table th:nth-child(1),
-  .rank-card-assists .rank-table td:nth-child(1){
-    text-align: center;
-  }
-  .rank-card-goals .rank-table th:nth-child(2),
-  .rank-card-goals .rank-table td:nth-child(2),
-  .rank-card-assists .rank-table th:nth-child(2),
-  .rank-card-assists .rank-table td:nth-child(2){
-    min-width: 0 !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding-right: 8px !important;
-  }
-  .rank-card-goals .rank-table th:nth-child(3),
-  .rank-card-goals .rank-table td:nth-child(3),
-  .rank-card-assists .rank-table th:nth-child(3),
-  .rank-card-assists .rank-table td:nth-child(3){
-    width: auto !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    justify-self: end;
-    text-align: right !important;
-    white-space: nowrap !important;
-    padding-left: 4px !important;
-    padding-right: 0 !important;
-  }
-}
-
-
-/* ===== Mobile fixes v4 ===== */
-@media (max-width: 720px){
-  /* Marca en dos renglones para liberar ancho a las pestañas */
-  .topbar{
-    grid-template-columns: auto minmax(0, 1fr) !important;
-    align-items: center !important;
-  }
-  .brand{
-    display: flex;
-    align-items: center;
-    min-width: 0;
-  }
-  .brand-title{
-    font-size: 13px !important;
-    line-height: 1.02 !important;
-    white-space: normal !important;
-    display: inline-flex;
-    flex-direction: column;
-    gap: 0;
-  }
-  .brand-title span{
-    display: block;
-  }
-
-  /* Rankings mobile: pegado a la derecha, pero con un pequeño aire */
-  .rank-card-goals .rank-table th:nth-child(3),
-  .rank-card-goals .rank-table td:nth-child(3),
-  .rank-card-assists .rank-table th:nth-child(3),
-  .rank-card-assists .rank-table td:nth-child(3){
-    justify-self: end !important;
-    text-align: right !important;
-    padding-right: 8px !important;
   }
 }

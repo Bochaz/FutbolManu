@@ -6,6 +6,8 @@ const X_ACCESS_KEY = "$2a$10$nzjX1kWtm5vCMZj8qtlSoeP/kUp77ZWnpFE6kWIcnBqe1fDL1lk
 
 const API_BASE = "https://api.jsonbin.io/v3/b";
 const LS_KEY = "manu_futbol_data_v2";
+const LS_BACKUPS_KEY = "manu_futbol_backups_v1";
+const MAX_LOCAL_BACKUPS = 20;
 
 /* ============================
    UTIL
@@ -48,6 +50,32 @@ function fmtDate(iso){
 function clampInt(v){
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
+function nowIso(){
+  return new Date().toISOString();
+}
+
+function maxIso(...values){
+  return values.filter(Boolean).sort().slice(-1)[0] || "";
+}
+
+function clone(value){
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function entityStamp(item, fallback=""){
+  return item?.updatedAt || item?.createdAt || fallback || "";
+}
+
+function touchPlayer(player){
+  if (player) player.updatedAt = nowIso();
+  return player;
+}
+
+function touchMatch(match){
+  if (match) match.updatedAt = nowIso();
+  return match;
 }
 
 function normalizeUrl(u){
@@ -126,10 +154,12 @@ function escapeHtml(str){
    ============================ */
 function defaultData(){
   return {
-    version: 2,
+    version: 3,
     players: [],
     matches: [],
-    updatedAt: new Date().toISOString()
+    deletedPlayers: {},
+    deletedMatches: {},
+    updatedAt: nowIso()
   };
 }
 
@@ -180,6 +210,17 @@ function saveLocal(record){
   localStorage.setItem(LS_KEY, JSON.stringify(record));
 }
 
+function saveBackup(record, reason="Backup"){
+  try{
+    const raw = localStorage.getItem(LS_BACKUPS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    list.unshift({ savedAt: nowIso(), reason, record: clone(record) });
+    localStorage.setItem(LS_BACKUPS_KEY, JSON.stringify(list.slice(0, MAX_LOCAL_BACKUPS)));
+  }catch(err){
+    console.warn("No se pudo guardar backup local", err);
+  }
+}
+
 /* ============================
    SANITIZE + MIGRATE
    ============================ */
@@ -187,18 +228,37 @@ function sanitizeData(d){
   const base = defaultData();
   if (!d || typeof d !== "object") return base;
 
-  const out = {
-    version: 2,
-    players: Array.isArray(d.players) ? d.players.filter(p => p && p.id && p.name) : [],
-    matches: Array.isArray(d.matches) ? d.matches.filter(m => m && m.id && m.date) : [],
-    updatedAt: d.updatedAt || new Date().toISOString()
-  };
+  const parentUpdatedAt = d.updatedAt || nowIso();
+  const players = [];
+  const playerIds = new Set();
 
-  for (const m of out.matches){
-    m.teamA = Array.isArray(m.teamA) ? m.teamA : [];
-    m.teamB = Array.isArray(m.teamB) ? m.teamB : [];
+  for (const raw of Array.isArray(d.players) ? d.players : []){
+    if (!raw || !raw.id || !raw.name || playerIds.has(raw.id)) continue;
+    playerIds.add(raw.id);
+    players.push({
+      id: String(raw.id),
+      name: String(raw.name).trim().slice(0, 50),
+      createdAt: raw.createdAt || raw.updatedAt || parentUpdatedAt,
+      updatedAt: raw.updatedAt || raw.createdAt || parentUpdatedAt
+    });
+  }
 
-    // playersPerTeam (format: 5v5 .. 8v8)
+  const matches = [];
+  const matchIds = new Set();
+  for (const raw of Array.isArray(d.matches) ? d.matches : []){
+    if (!raw || !raw.id || !raw.date || matchIds.has(raw.id)) continue;
+    matchIds.add(raw.id);
+
+    const m = {
+      ...raw,
+      id: String(raw.id),
+      date: String(raw.date),
+      createdAt: raw.createdAt || raw.updatedAt || parentUpdatedAt,
+      updatedAt: raw.updatedAt || raw.createdAt || parentUpdatedAt,
+      teamA: Array.isArray(raw.teamA) ? raw.teamA.filter(Boolean) : [],
+      teamB: Array.isArray(raw.teamB) ? raw.teamB.filter(Boolean) : []
+    };
+
     if (m.playersPerTeam === undefined || m.playersPerTeam === null){
       const guess = Math.max(m.teamA.length, m.teamB.length);
       m.playersPerTeam = (guess >= 5 && guess <= 8) ? guess : 7;
@@ -206,10 +266,9 @@ function sanitizeData(d){
       m.playersPerTeam = clampInt(m.playersPerTeam);
       if (m.playersPerTeam < 5 || m.playersPerTeam > 8) m.playersPerTeam = 7;
     }
-    m.createdAt = m.createdAt || new Date().toISOString();
 
-        const _v = (typeof m.videoUrl === "string") ? normalizeUrl(m.videoUrl).slice(0, 600) : "";
-    m.videoUrl = canonicalYouTubeUrl(_v);
+    const safeVideo = (typeof m.videoUrl === "string") ? normalizeUrl(m.videoUrl).slice(0, 600) : "";
+    m.videoUrl = canonicalYouTubeUrl(safeVideo);
 
     if (!m.playerStats || typeof m.playerStats !== "object") m.playerStats = {};
 
@@ -231,30 +290,73 @@ function sanitizeData(d){
 
     if (!Array.isArray(m.mvpVotes)) m.mvpVotes = [];
     if (Array.isArray(m.mvp) && m.mvp.some(Boolean) && m.mvpVotes.length === 0){
-      m.mvpVotes.push({ voter: "Legacy", picks: [m.mvp[0]||null, m.mvp[1]||null, m.mvp[2]||null], createdAt: new Date().toISOString() });
+      m.mvpVotes.push({ voter: "Legacy", picks: [m.mvp[0]||null, m.mvp[1]||null, m.mvp[2]||null], createdAt: parentUpdatedAt });
     }
     delete m.mvp;
 
+    const cleanedStats = {};
     for (const [pid, ps] of Object.entries(m.playerStats)){
-      if (!ps || typeof ps !== "object") { delete m.playerStats[pid]; continue; }
-      m.playerStats[pid] = { goals: clampInt(ps.goals), assists: clampInt(ps.assists) };
+      if (!ps || typeof ps !== "object") continue;
+      cleanedStats[pid] = { goals: clampInt(ps.goals), assists: clampInt(ps.assists) };
     }
+    m.playerStats = cleanedStats;
 
     m.mvpVotes = m.mvpVotes
       .filter(v => v && (v.voterId || v.voter))
-      .map(v => {
-        const voterId = (typeof v.voterId === "string" && v.voterId.trim()) ? v.voterId.trim() : null;
-        const voter = (typeof v.voter === "string") ? v.voter.trim().slice(0, 40) : "";
-        return {
-          voterId,
-          voter,
-          picks: Array.isArray(v.picks) ? [v.picks[0]||null, v.picks[1]||null, v.picks[2]||null] : [null,null,null],
-          createdAt: v.createdAt || new Date().toISOString()
-        };
-      });
+      .map(v => ({
+        voterId: (typeof v.voterId === "string" && v.voterId.trim()) ? v.voterId.trim() : null,
+        voter: (typeof v.voter === "string") ? v.voter.trim().slice(0, 40) : "",
+        picks: Array.isArray(v.picks) ? [v.picks[0]||null, v.picks[1]||null, v.picks[2]||null] : [null,null,null],
+        createdAt: v.createdAt || parentUpdatedAt
+      }));
+
+    matches.push(m);
   }
 
-  return out;
+  return {
+    version: 3,
+    players,
+    matches,
+    deletedPlayers: d.deletedPlayers && typeof d.deletedPlayers === "object" ? { ...d.deletedPlayers } : {},
+    deletedMatches: d.deletedMatches && typeof d.deletedMatches === "object" ? { ...d.deletedMatches } : {},
+    updatedAt: parentUpdatedAt
+  };
+}
+
+function mergeRecords(remoteRecord, localRecord){
+  const remote = sanitizeData(remoteRecord);
+  const local = sanitizeData(localRecord);
+  const merged = defaultData();
+
+  merged.deletedPlayers = { ...remote.deletedPlayers, ...local.deletedPlayers };
+  merged.deletedMatches = { ...remote.deletedMatches, ...local.deletedMatches };
+
+  const remotePlayers = new Map(remote.players.map(p => [p.id, p]));
+  const localPlayers = new Map(local.players.map(p => [p.id, p]));
+  for (const id of new Set([...remotePlayers.keys(), ...localPlayers.keys(), ...Object.keys(merged.deletedPlayers)])){
+    const deletedAt = maxIso(remote.deletedPlayers?.[id], local.deletedPlayers?.[id]);
+    const a = remotePlayers.get(id);
+    const b = localPlayers.get(id);
+    const chosen = !a ? b : !b ? a : (entityStamp(b, local.updatedAt) >= entityStamp(a, remote.updatedAt) ? b : a);
+    if (chosen && (!deletedAt || entityStamp(chosen, chosen.updatedAt) > deletedAt)){
+      merged.players.push(clone(chosen));
+    }
+  }
+
+  const remoteMatches = new Map(remote.matches.map(m => [m.id, m]));
+  const localMatches = new Map(local.matches.map(m => [m.id, m]));
+  for (const id of new Set([...remoteMatches.keys(), ...localMatches.keys(), ...Object.keys(merged.deletedMatches)])){
+    const deletedAt = maxIso(remote.deletedMatches?.[id], local.deletedMatches?.[id]);
+    const a = remoteMatches.get(id);
+    const b = localMatches.get(id);
+    const chosen = !a ? b : !b ? a : (entityStamp(b, local.updatedAt) >= entityStamp(a, remote.updatedAt) ? b : a);
+    if (chosen && (!deletedAt || entityStamp(chosen, chosen.updatedAt) > deletedAt)){
+      merged.matches.push(clone(chosen));
+    }
+  }
+
+  merged.updatedAt = maxIso(remote.updatedAt, local.updatedAt, nowIso());
+  return sanitizeData(merged);
 }
 
 /* ============================
@@ -405,13 +507,31 @@ function sortMatchesDesc(a,b){
 async function persist(msg){
   try{
     overlay(true, "Guardando…");
-    state.data.updatedAt = new Date().toISOString();
+    state.data = sanitizeData(state.data);
+    state.data.updatedAt = nowIso();
     saveLocal(state.data);
+    saveBackup(state.data, `${msg} — antes de sincronizar`);
+
+    let remote = null;
+    try{
+      remote = await loadRemote();
+    }catch(err){
+      console.warn("No se pudo leer remoto antes de guardar", err);
+    }
+
+    state.data = mergeRecords(remote, state.data);
+    state.data.updatedAt = nowIso();
+    saveLocal(state.data);
+    saveBackup(state.data, `${msg} — merge final`);
+
     await saveRemote(state.data);
     toast(msg);
   }catch(err){
     console.error(err);
+    state.data = sanitizeData(state.data);
+    state.data.updatedAt = nowIso();
     saveLocal(state.data);
+    saveBackup(state.data, `${msg} — offline`);
     toast(msg + " (offline)");
   }finally{
     overlay(false);
@@ -463,7 +583,7 @@ function openRenamePlayerModal(player){
       return toast("Ya existe");
     }
     const p = state.data.players.find(x => x.id === player.id);
-    if (p) p.name = name;
+    if (p) { p.name = name; touchPlayer(p); }
     modal.remove();
     await persist("Jugador actualizado");
   };
@@ -539,7 +659,7 @@ function renderPlayers(){
     const name = ($("#playerName").value || "").trim();
     if (!name) return toast("Nombre requerido");
     if (state.data.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return toast("Ya existe");
-    state.data.players.push({ id: uuid(), name });
+    state.data.players.push({ id: uuid(), name, createdAt: nowIso(), updatedAt: nowIso() });
     await persist("Jugador agregado");
     $("#playerName").value = "";
   };
@@ -567,12 +687,17 @@ function renderPlayers(){
     const used = state.data.matches.some(m => (m.teamA||[]).includes(pid) || (m.teamB||[]).includes(pid));
     if (used && !confirm("Ese jugador aparece en partidos. ¿Eliminar igual?")) return;
 
+    state.data.deletedPlayers = state.data.deletedPlayers || {};
+    state.data.deletedPlayers[pid] = nowIso();
     state.data.players = state.data.players.filter(p => p.id !== pid);
     for (const m of state.data.matches){
+      const beforeA = (m.teamA||[]).length;
+      const beforeB = (m.teamB||[]).length;
       m.teamA = (m.teamA||[]).filter(x => x !== pid);
       m.teamB = (m.teamB||[]).filter(x => x !== pid);
       if (m.playerStats) delete m.playerStats[pid];
       m.mvpVotes = (m.mvpVotes||[]).map(v => ({ ...v, picks: (v.picks||[]).map(x => x === pid ? null : x) }));
+      if (beforeA !== m.teamA.length || beforeB !== m.teamB.length) touchMatch(m);
     }
     await persist("Jugador eliminado");
   };
@@ -592,14 +717,13 @@ function renderNewMatch(){
   if (!state.draft){
     if (state.editingMatchId){
       const m = state.data.matches.find(x => x.id === state.editingMatchId);
-      state.draft = m ? { id:m.id, date:m.date, videoUrl: (m.videoUrl||""), playersPerTeam: m.playersPerTeam || 5, activeTeam: 'A', teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||new Date().toISOString() }
-                      : { id:uuid(), date:toISODateInput(new Date()), videoUrl: "", playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
+      state.draft = m ? { id:m.id, date:m.date, playersPerTeam: m.playersPerTeam || 5, activeTeam: 'A', teamA:[...(m.teamA||[])], teamB:[...(m.teamB||[])], createdAt:m.createdAt||nowIso() }
+                      : { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:nowIso() };
     } else {
-      state.draft = { id:uuid(), date:toISODateInput(new Date()), videoUrl: "", playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:new Date().toISOString() };
+      state.draft = { id:uuid(), date:toISODateInput(new Date()), playersPerTeam: 7, activeTeam: 'A', teamA:[], teamB:[], createdAt:nowIso() };
     }
   }
   const d = state.draft;
-  if (d.videoUrl === undefined || d.videoUrl === null) d.videoUrl = "";
   if (!d.playersPerTeam) d.playersPerTeam = 7;
   if (!d.activeTeam) d.activeTeam = 'A';
   const isEdit = !!state.editingMatchId;
@@ -674,11 +798,10 @@ function renderNewMatch(){
 
     <div class="hr"></div>
 
-    <div class="hr"></div>
-
     <div class="newmatch-layout">
       <div class="team-select nm-team-select">
-                <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
+        <div class="h2" style="margin:0;">Cargando en</div>
+        <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
         <button class="team-toggle teamB ${d.activeTeam==='B' ? 'is-active' : ''}" id="selTeamB">Equipo B</button>
       </div>
 
@@ -711,6 +834,8 @@ function renderNewMatch(){
       if (!id) return;
       if (!confirm("¿Eliminar partido?")) return;
       if (!confirm("Confirmá de nuevo: esto borra resultado, stats y votos. ¿Eliminar?")) return;
+      state.data.deletedMatches = state.data.deletedMatches || {};
+      state.data.deletedMatches[id] = nowIso();
       state.data.matches = state.data.matches.filter(m => m.id !== id);
       state.ui.expandedMatches.delete(id);
       state.ui.expandedVotes.delete(id);
@@ -742,12 +867,13 @@ function renderNewMatch(){
       m.teamA = [...d.teamA];
       m.teamB = [...d.teamB];
       normalizeMatchAfterEdit(m);
+      touchMatch(m);
       state.draft = null;
       state.editingMatchId = null;
       await persist("Partido actualizado");
       setView("matches");
     } else {
-      state.data.matches.push({ id:d.id, date:d.date, videoUrl: "", playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
+      state.data.matches.push({ id:d.id, date:d.date, videoUrl: "", playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt, updatedAt: nowIso() });
       state.draft = null;
       await persist("Partido creado");
       setView("matches");
@@ -891,6 +1017,7 @@ function renderMatches(){
         return;
       }
       m.videoUrl = canon;
+      touchMatch(m);
       await persist("Video guardado");
       return;
     }
@@ -1001,7 +1128,7 @@ function renderMatches(){
         const hasVotes = votes > 0;
 
         return `
-          <button class="player-row ${hasVotes ? "has-votes" : ""} ${pid===mvpWinnerId ? "mvp-winner" : ""}"
+          <button class="player-row ${hasVotes ? "has-votes" : ""}"
             data-edit-player="${pid}" data-match-id="${m.id}">
             <span><b>${escapeHtml(playerName(pid))}</b>${pid===mvpWinnerId ? ` <span class="icon-pill">🌟 MVP</span>${pts ? ` <span class="icon-pill">⭐ ${pts}</span>` : ""}` : (hasVotes ? ` <span class="icon-pill">⭐ ${pts}</span>` : "")}</span>
             <span class="icons">
@@ -1214,6 +1341,7 @@ function renderMatches(){
       const a = wheelValue(modal, "scoreA");
       const b = wheelValue(modal, "scoreB");
       match.manualScore = { a, b };
+      touchMatch(match);
       modal.remove();
       await persist("Resultado guardado");
     };
@@ -1262,6 +1390,7 @@ function renderMatches(){
       const a = wheelValue(modal, "assists");
       match.playerStats = match.playerStats || {};
       match.playerStats[pid] = { goals: g, assists: a };
+      touchMatch(match);
       modal.remove();
       await persist("Actualizado");
     };
@@ -1325,6 +1454,7 @@ function renderMatches(){
       const payload = { voterId, picks:[p1,p2,p3], createdAt:new Date().toISOString() };
       if (existingIdx >= 0) match.mvpVotes[existingIdx] = payload;
       else match.mvpVotes.push(payload);
+      touchMatch(match);
 
       modal.remove();
       await persist("Voto guardado");
@@ -1417,20 +1547,6 @@ function wireUI(){
     setView(btn.dataset.view);
   });
 
-  const btnSync = $("#btnSync");
-  if (btnSync) btnSync.onclick = async () => {
-    try{
-      overlay(true, "Sincronizando…");
-      saveLocal(state.data);
-      await saveRemote(state.data);
-      toast("Sync OK");
-    }catch(err){
-      console.error(err);
-      toast("Sync falló");
-    }finally{
-      overlay(false);
-    }
-  };
 }
 
 /* ============================
@@ -1438,12 +1554,14 @@ function wireUI(){
    ============================ */
 async function initialLoad(){
   overlay(true, "Cargando…");
+  const local = loadLocal();
   try{
     const remote = await loadRemote();
-    state.data = sanitizeData(remote);
+    state.data = mergeRecords(remote, local);
     saveLocal(state.data);
+    saveBackup(state.data, "Carga inicial");
   }catch(err){
-    const local = loadLocal();
+    console.warn("No se pudo cargar remoto", err);
     state.data = local ? sanitizeData(local) : defaultData();
   }finally{
     overlay(false);
