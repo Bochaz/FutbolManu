@@ -1129,3 +1129,76 @@ select.select option{
     text-align: center;
   }
 }
+
+
+/* ===== Final fixes requested ===== */
+@media (max-width: 720px){
+  /* Jugadores: Agregar + botón + Buscar en una sola línea,
+     con Buscar ocupando la mitad del ancho de Agregar */
+  .players-toolbar.row{
+    display: grid !important;
+    grid-template-columns: minmax(0, 2fr) auto minmax(0, 1fr) !important;
+    grid-auto-flow: column;
+    align-items: end !important;
+    column-gap: 6px !important;
+    row-gap: 6px !important;
+    flex-wrap: nowrap !important;
+  }
+  .players-toolbar.row > .players-field-add{
+    grid-column: 1 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    flex: 0 1 auto !important;
+  }
+  .players-toolbar.row > .players-actions{
+    grid-column: 2 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    flex: 0 0 auto !important;
+    align-self: end !important;
+  }
+  .players-toolbar.row > .players-field-search{
+    grid-column: 3 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    flex: 0 1 auto !important;
+  }
+  .players-toolbar.row > *{ margin: 0 !important; }
+  .players-toolbar .input{ width: 100% !important; }
+  #btnAddPlayer{
+    width: auto !important;
+    min-width: 0 !important;
+    height: 38px !important;
+    padding: 0 10px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Rankings: Goles y Asistencias pegados al borde derecho de la tarjeta */
+  .rank-card-goals .rank-table,
+  .rank-card-assists .rank-table{
+    width: 100% !important;
+    table-layout: fixed !important;
+  }
+  .rank-card-goals .rank-table th:nth-child(2),
+  .rank-card-goals .rank-table td:nth-child(2),
+  .rank-card-assists .rank-table th:nth-child(2),
+  .rank-card-assists .rank-table td:nth-child(2){
+    width: auto !important;
+    min-width: 0 !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rank-card-goals .rank-table th:nth-child(3),
+  .rank-card-goals .rank-table td:nth-child(3),
+  .rank-card-assists .rank-table th:nth-child(3),
+  .rank-card-assists .rank-table td:nth-child(3){
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    text-align: right !important;
+    padding-left: 4px !important;
+    padding-right: 8px !important;
+    white-space: nowrap !important;
+  }
+}
