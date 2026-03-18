@@ -1431,19 +1431,19 @@ function renderLeaderboard(){
         </div>
       </div>
 
-      <table class="table rank-table" style="margin-top:8px;">
+      <table class="table rank-table ${hasExtra ? `has-extra` : `no-extra`}" style="margin-top:8px;">
         ${hasExtra ? `
           <colgroup>
-            <col style="width:52px" />
-            <col />
-            <col style="width:110px" />
-            <col style="width:240px" />
+            <col style="width:12%" />
+            <col style="width:42%" />
+            <col style="width:14%" />
+            <col style="width:32%" />
           </colgroup>
         ` : `
           <colgroup>
-            <col style="width:52px" />
-            <col />
-            <col style="width:110px" />
+            <col style="width:14%" />
+            <col style="width:56%" />
+            <col style="width:30%" />
           </colgroup>
         `}
         <thead><tr><th>#</th><th>Jugador</th><th>${mainLabel}</th>${hasExtra ? `<th>${extraLabel || ""}</th>` : ``}</tr></thead>
@@ -1487,7 +1487,8 @@ function wireUI(){
     setView(btn.dataset.view);
   });
 
-  $("#btnSync").onclick = async () => {
+  const btnSync = $("#btnSync");
+  if (btnSync) btnSync.onclick = async () => {
     try{
       overlay(true, "Sincronizando…");
       saveLocal(state.data);
