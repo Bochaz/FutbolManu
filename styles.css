@@ -1302,3 +1302,39 @@ select.select option{
     padding-right: 0 !important;
   }
 }
+
+
+/* ===== Mobile fixes v4 ===== */
+@media (max-width: 720px){
+  /* Marca en dos renglones para liberar ancho a las pestañas */
+  .topbar{
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    align-items: center !important;
+  }
+  .brand{
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .brand-title{
+    font-size: 13px !important;
+    line-height: 1.02 !important;
+    white-space: normal !important;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .brand-title span{
+    display: block;
+  }
+
+  /* Rankings mobile: pegado a la derecha, pero con un pequeño aire */
+  .rank-card-goals .rank-table th:nth-child(3),
+  .rank-card-goals .rank-table td:nth-child(3),
+  .rank-card-assists .rank-table th:nth-child(3),
+  .rank-card-assists .rank-table td:nth-child(3){
+    justify-self: end !important;
+    text-align: right !important;
+    padding-right: 8px !important;
+  }
+}
