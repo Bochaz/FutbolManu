@@ -991,3 +991,144 @@ select.select option{
   .rank-table th:nth-child(4),
   .rank-table td:nth-child(4){ text-align:right; }
 }
+
+
+/* ===== Layout tuning: desktop card widths ===== */
+@media (min-width: 1024px){
+  #viewPlayers,
+  #viewMatches{
+    width: min(100%, 1180px);
+    margin-inline: auto;
+  }
+  #viewNewMatch{
+    width: min(100%, 1220px);
+    margin-inline: auto;
+  }
+
+  .nm-topbar{
+    align-items: end;
+  }
+  .nm-field-date{
+    flex: 0 0 230px !important;
+    min-width: 230px !important;
+    max-width: 230px;
+  }
+  .nm-field-format{
+    flex: 0 0 160px !important;
+    min-width: 160px !important;
+    max-width: 160px;
+  }
+  .nm-actions{
+    margin-left: auto;
+    flex: 1 1 auto;
+    justify-content: flex-end !important;
+  }
+}
+
+/* ===== Mobile compactness / alignment refinements ===== */
+@media (max-width: 720px){
+  .main{ padding: 0 6px; }
+  .card{ padding: 8px; border-radius: 13px; }
+  .h1{ font-size:17px; }
+  .h2{ font-size:10px; letter-spacing:.65px; }
+  .input, .select{ font-size: 13px; padding: 8px 9px; }
+  .btn{ padding: 7px 9px; font-size: 11px; }
+  .btn-small{ padding: 5px 7px; font-size: 10px; }
+
+  /* Nuevo Partido: todo en una sola línea arriba */
+  .nm-topbar{
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr) auto auto;
+    gap: 6px !important;
+    align-items: end !important;
+  }
+  .nm-field{ min-width: 0 !important; }
+  .nm-field-date, .nm-field-format{ max-width: none !important; }
+  .nm-topbar .h2{ font-size: 10px; margin-bottom: 3px; }
+  #matchDate, #playersPerTeam{ width: 100%; min-width: 0; padding: 8px 9px; font-size: 13px; }
+  .nm-actions{
+    display: contents;
+  }
+  .nm-actions .btn{ align-self: end; }
+  #btnSaveMatch, #btnResetDraft{
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 !important;
+    border-radius: 10px;
+  }
+
+  /* Partidos: fecha izquierda, formato + MVP arriba a la derecha */
+  .match-card{ padding: 9px; margin-bottom: 8px; }
+  .match-header{
+    grid-template-columns: 1fr auto;
+    align-items: start;
+    gap: 6px 8px;
+  }
+  .match-left{
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .match-date{
+    font-size: 16px;
+    line-height: 1.1;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .match-left .match-meta{
+    margin-top: 0;
+    margin-left: auto;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-start;
+    gap: 1px;
+    text-align: right;
+    white-space: nowrap;
+    font-size: 10px;
+    line-height: 1.05;
+  }
+  .match-left .meta-sep{ display:none; }
+  .match-score{
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+  .match-actions{
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  /* Rankings mobile: números bien a la derecha */
+  .rank-card-goals .rank-table th:nth-child(3),
+  .rank-card-goals .rank-table td:nth-child(3),
+  .rank-card-assists .rank-table th:nth-child(3),
+  .rank-card-assists .rank-table td:nth-child(3){
+    text-align: right !important;
+    white-space: nowrap;
+  }
+
+  /* Jugadores mobile: agregar + buscar en una sola línea */
+  .players-toolbar{
+    display:grid !important;
+    grid-template-columns: minmax(0, 1.1fr) auto minmax(0, .72fr);
+    gap: 6px !important;
+    align-items:end !important;
+  }
+  .players-field-add,
+  .players-field-search,
+  .players-actions{ min-width:0 !important; }
+  .players-toolbar .h2{ font-size:10px; margin-bottom:3px; }
+  .players-actions{ width: auto; }
+  #btnAddPlayer{ white-space: nowrap; height: 36px; padding-inline: 10px; }
+  .players-field-search .input,
+  .players-field-add .input{ padding: 8px 9px; }
+  .players-table th:nth-child(6),
+  .players-table td:nth-child(6){
+    white-space: nowrap;
+    width: 78px;
+    min-width: 78px;
+    text-align: center;
+  }
+}

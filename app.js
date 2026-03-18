@@ -486,14 +486,14 @@ function renderPlayers(){
     <div class="h1">Jugadores</div>
 
     <div class="row players-toolbar" style="align-items:end;">
-      <div style="flex:1; min-width:260px;">
+      <div class="players-field players-field-add" style="flex:1; min-width:260px;">
         <div class="h2">Agregar</div>
         <input class="input" id="playerName" placeholder="Nombre" />
       </div>
-      <div style="min-width:180px;">
+      <div class="players-actions" style="min-width:180px;">
         <button class="btn btn-primary" id="btnAddPlayer">+ Agregar</button>
       </div>
-      <div style="flex:1; min-width:260px;">
+      <div class="players-field players-field-search" style="flex:1; min-width:260px;">
         <div class="h2">Buscar</div>
         <input class="input" id="playerSearch" placeholder="Buscar…" value="${escapeHtml(state.ui.playerQuery||"")}" />
       </div>
@@ -501,7 +501,7 @@ function renderPlayers(){
 
     <div class="hr"></div>
 
-    <table class="table">
+    <table class="table players-table">
       <thead>
         <tr>
           <th>Jugador</th>
@@ -652,12 +652,12 @@ function renderNewMatch(){
     <div class="h1">${isEdit ? "Editar partido" : "Nuevo partido"}</div>
 
     <div class="row nm-topbar" style="align-items:end; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-      <div style="flex:1; min-width:260px;">
+      <div class="nm-field nm-field-date" style="flex:1; min-width:260px;">
         <div class="h2">Fecha</div>
         <input class="input" type="date" id="matchDate" value="${d.date}" />
       </div>
 
-      <div style="min-width:200px;">
+      <div class="nm-field nm-field-format" style="min-width:200px;">
         <div class="h2">Formato</div>
         <select class="select" id="playersPerTeam">
           <option value="5" ${d.playersPerTeam===5 ? "selected" : ""}>5v5</option>
@@ -666,7 +666,7 @@ function renderNewMatch(){
           <option value="8" ${d.playersPerTeam===8 ? "selected" : ""}>8v8</option>
         </select>
       </div>
-      <div class="row" style="gap:8px; justify-content:flex-end;">
+      <div class="row nm-actions" style="gap:8px; justify-content:flex-end;">
         ${isEdit ? `<button class="btn" id="btnCancelEdit">Cancelar</button><button class="btn btn-danger" id="btnDeleteMatch">Eliminar</button>` : `<button class="btn" id="btnResetDraft"><span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span><span class="btn-label">Reiniciar</span></button>`}
         <button class="btn btn-primary" id="btnSaveMatch"><span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V7l4-4h10l4 4v12a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v4h8"/></svg></span><span class="btn-label">${isEdit ? "Guardar cambios" : "Guardar partido"}</span></button>
       </div>
