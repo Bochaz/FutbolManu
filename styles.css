@@ -88,9 +88,9 @@ body::before{
 }
 
 .main{
-  max-width: 1360px;
+  max-width: 1100px;
   margin: 16px auto 60px;
-  padding: 0 16px;
+  padding: 0 14px;
 }
 
 .card{
@@ -886,7 +886,7 @@ select.select option{
 
 
 /* ============================
-   Rankings desktop grid
+   Rankings grid + mobile compact overrides
    ============================ */
 .rankings-grid{
   display:grid;
@@ -897,140 +897,198 @@ select.select option{
   height:100%;
   margin-bottom:0 !important;
 }
+.rank-table.has-extra th:nth-child(4),
+.rank-table.has-extra td:nth-child(4){
+  white-space: nowrap;
+}
+.player-list,
+.dropzone.teamlist{
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+
 @media (min-width: 980px){
   .rankings-grid{
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 0.84fr) minmax(0, 0.84fr) minmax(0, 1.62fr);
+    gap: 16px;
     align-items:start;
   }
-}
-
-
-/* ============================
-   Responsive polish + Rankings desktop width
-   ============================ */
-.match-actions{
-  display:flex;
-  gap:8px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-
-@media (min-width: 980px){
-  .rankings-grid{
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.18fr);
-    gap: 14px;
-  }
-  .rank-card{
-    min-width: 0;
-  }
-  .rank-table.no-extra th:nth-child(2),
-  .rank-table.no-extra td:nth-child(2),
-  .rank-table.has-extra th:nth-child(2),
-  .rank-table.has-extra td:nth-child(2){
-    min-width: 0;
-  }
-}
-
-@media (max-width: 980px){
-  .main{
-    max-width: 100%;
-    padding: 0 12px;
+  .rankings-grid > .rank-card:nth-child(3) .rank-table td:nth-child(4),
+  .rankings-grid > .rank-card:nth-child(3) .rank-table th:nth-child(4){
+    font-size: 12px;
   }
 }
 
 @media (max-width: 720px){
-  html, body{
-    overflow-x: hidden;
+  body{
+    font-size: 14px;
   }
   .topbar{
-    position: sticky;
-    top: 0;
-    display: block;
-    padding: 10px 12px;
+    padding: 8px 10px;
+  }
+  .logo-mark{
+    width: 34px;
+    height: 34px;
+    font-size: 13px;
   }
   .brand{
-    margin-bottom: 10px;
-    min-width: 0;
+    margin-bottom: 8px;
   }
   .brand-title{
-    font-size: 16px;
+    font-size: 15px;
   }
   .tabs{
-    width: 100%;
-    gap: 6px;
-    padding-bottom: 2px;
-    scrollbar-width: none;
+    gap: 5px;
   }
-  .tabs::-webkit-scrollbar{ display:none; }
+  .tab{
+    padding: 8px 10px;
+    font-size: 11px;
+  }
   .main{
-    padding: 0 10px;
+    margin: 8px auto 52px;
+    padding: 0 8px;
   }
   .row{
-    gap: 10px;
-  }
-  .col{
-    min-width: 0;
+    gap: 8px;
   }
   .card,
   .panel,
   .team-box,
   .match-card,
   .detail-box{
-    border-radius: 14px;
+    padding: 9px;
+    border-radius: 13px;
   }
-  .match-card{
-    padding: 11px;
+  .hr{
+    margin: 10px 0;
+  }
+  .h1{
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .h2{
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .input,
+  .select{
+    padding: 9px 10px;
+    font-size: 14px;
+  }
+  .btn{
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .btn-small{
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+  .nm-topbar{
+    gap: 6px !important;
+  }
+  .nm-topbar .h2,
+  .players-toolbar .h2{
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  #matchDate, #playersPerTeam{
+    padding: 9px 10px;
+    font-size: 14px;
+  }
+  #btnSaveMatch, #btnResetDraft, #btnAddPlayer{
+    padding: 9px 10px !important;
+  }
+  .newmatch-layout,
+  .teams-right{
+    gap: 10px;
+  }
+  .team-toggle{
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .player-list{
+    max-height: 42vh;
+  }
+  .dropzone.teamlist{
+    max-height: 30vh;
+    padding-right: 2px;
+  }
+  .player-chip{
+    padding: 7px 8px;
+    font-size: 13px;
+  }
+  .match-header{
+    gap: 8px;
   }
   .match-date{
-    line-height: 1.1;
-    word-break: break-word;
+    line-height: 1.08;
   }
   .match-meta{
-    gap: 6px;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .scoreline{
+    font-size: 21px;
+  }
+  .scoreline .big{
+    padding: 5px 11px;
+    margin: 0 5px;
+    min-width: 38px;
+  }
+  .team-tag{
+    padding: 5px 10px;
+    font-size: 15px;
   }
   .match-actions{
     width: 100%;
     gap: 6px;
   }
+  .match-card.is-collapsed .match-actions{
+    display:none;
+  }
   .match-actions .btn{
-    min-height: 38px;
+    min-height: 34px;
+  }
+  .detail-box,
+  .video-embed{
+    margin-top: 8px;
   }
   .team-title{
-    gap: 8px;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .team-title span{
+    font-size: 11px;
   }
   .player-row{
-    min-width: 0;
+    padding: 7px 8px;
+    margin: 4px 0;
     gap: 8px;
+    font-size: 13px;
   }
-  .player-row b,
-  .player-row span,
-  .player-row .icons{
-    min-width: 0;
-  }
-  .player-row b{
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: block;
+  .icon-pill{
+    padding: 3px 7px;
+    font-size: 11px;
   }
   .rank-title .h2{
-    font-size: 16px;
+    font-size: 15px;
   }
   .rank-icon{
-    width: 30px;
-    height: 30px;
-    font-size: 16px;
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+    border-radius: 10px;
   }
   .rank-table th,
   .rank-table td{
+    padding: 7px 8px;
+    font-size: 12px;
     white-space: nowrap;
   }
-  .input,
-  .select,
-  .btn,
-  .tab,
-  .player-item,
-  .player-row{
-    -webkit-tap-highlight-color: transparent;
+  .rank-table.no-extra th:nth-child(3),
+  .rank-table.no-extra td:nth-child(3){
+    text-align:right;
   }
 }

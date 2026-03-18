@@ -126,11 +126,9 @@ function escapeHtml(str){
    ============================ */
 function defaultData(){
   return {
-    version: 3,
+    version: 2,
     players: [],
     matches: [],
-    deletedPlayerIds: [],
-    deletedMatchIds: [],
     updatedAt: new Date().toISOString()
   };
 }
@@ -190,11 +188,9 @@ function sanitizeData(d){
   if (!d || typeof d !== "object") return base;
 
   const out = {
-    version: 3,
+    version: 2,
     players: Array.isArray(d.players) ? d.players.filter(p => p && p.id && p.name) : [],
     matches: Array.isArray(d.matches) ? d.matches.filter(m => m && m.id && m.date) : [],
-    deletedPlayerIds: Array.isArray(d.deletedPlayerIds) ? d.deletedPlayerIds.filter(Boolean) : [],
-    deletedMatchIds: Array.isArray(d.deletedMatchIds) ? d.deletedMatchIds.filter(Boolean) : [],
     updatedAt: d.updatedAt || new Date().toISOString()
   };
 
@@ -259,62 +255,6 @@ function sanitizeData(d){
   }
 
   return out;
-}
-
-function uniqueStrings(arr){
-  return [...new Set((Array.isArray(arr) ? arr : []).filter(v => typeof v === "string" && v.trim()).map(v => v.trim()))];
-}
-
-function mergeRecords(baseRecord, incomingRecord){
-  const base = sanitizeData(baseRecord);
-  const incoming = sanitizeData(incomingRecord);
-
-  const deletedPlayerIds = new Set([
-    ...uniqueStrings(base.deletedPlayerIds),
-    ...uniqueStrings(incoming.deletedPlayerIds)
-  ]);
-  const deletedMatchIds = new Set([
-    ...uniqueStrings(base.deletedMatchIds),
-    ...uniqueStrings(incoming.deletedMatchIds)
-  ]);
-
-  const playersMap = new Map();
-  for (const p of base.players || []) playersMap.set(p.id, { ...p });
-  for (const p of incoming.players || []) playersMap.set(p.id, { ...p });
-  for (const id of deletedPlayerIds) playersMap.delete(id);
-
-  const matchesMap = new Map();
-  for (const m of base.matches || []) matchesMap.set(m.id, { ...m });
-  for (const m of incoming.matches || []) matchesMap.set(m.id, { ...m });
-  for (const id of deletedMatchIds) matchesMap.delete(id);
-
-  const players = [...playersMap.values()].sort((a,b) => String(a.name || "").localeCompare(String(b.name || "")));
-  const playerIdSet = new Set(players.map(p => p.id));
-
-  const matches = [...matchesMap.values()].map(m => {
-    const mm = sanitizeData({ players, matches:[m], deletedPlayerIds:[...deletedPlayerIds], deletedMatchIds:[...deletedMatchIds] }).matches[0] || { ...m };
-    mm.teamA = (mm.teamA || []).filter(pid => playerIdSet.has(pid));
-    mm.teamB = (mm.teamB || []).filter(pid => playerIdSet.has(pid));
-    if (mm.playerStats && typeof mm.playerStats === "object"){
-      for (const pid of Object.keys(mm.playerStats)){
-        if (!playerIdSet.has(pid)) delete mm.playerStats[pid];
-      }
-    }
-    mm.mvpVotes = (mm.mvpVotes || []).map(v => ({
-      ...v,
-      picks: (v.picks || []).map(pid => playerIdSet.has(pid) ? pid : null)
-    }));
-    return mm;
-  }).sort(sortMatchesDesc);
-
-  return sanitizeData({
-    version: 3,
-    players,
-    matches,
-    deletedPlayerIds: [...deletedPlayerIds],
-    deletedMatchIds: [...deletedMatchIds],
-    updatedAt: new Date().toISOString()
-  });
 }
 
 /* ============================
@@ -465,15 +405,12 @@ function sortMatchesDesc(a,b){
 async function persist(msg){
   try{
     overlay(true, "Guardando…");
-    const remote = await loadRemote().catch(() => null);
-    state.data = mergeRecords(remote || defaultData(), state.data);
     state.data.updatedAt = new Date().toISOString();
     saveLocal(state.data);
     await saveRemote(state.data);
     toast(msg);
   }catch(err){
     console.error(err);
-    state.data.updatedAt = new Date().toISOString();
     saveLocal(state.data);
     toast(msg + " (offline)");
   }finally{
@@ -527,7 +464,6 @@ function openRenamePlayerModal(player){
     }
     const p = state.data.players.find(x => x.id === player.id);
     if (p) p.name = name;
-    if (p) p.updatedAt = new Date().toISOString();
     modal.remove();
     await persist("Jugador actualizado");
   };
@@ -603,7 +539,7 @@ function renderPlayers(){
     const name = ($("#playerName").value || "").trim();
     if (!name) return toast("Nombre requerido");
     if (state.data.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return toast("Ya existe");
-    state.data.players.push({ id: uuid(), name, updatedAt: new Date().toISOString() });
+    state.data.players.push({ id: uuid(), name });
     await persist("Jugador agregado");
     $("#playerName").value = "";
   };
@@ -632,7 +568,6 @@ function renderPlayers(){
     if (used && !confirm("Ese jugador aparece en partidos. ¿Eliminar igual?")) return;
 
     state.data.players = state.data.players.filter(p => p.id !== pid);
-    state.data.deletedPlayerIds = uniqueStrings([...(state.data.deletedPlayerIds || []), pid]);
     for (const m of state.data.matches){
       m.teamA = (m.teamA||[]).filter(x => x !== pid);
       m.teamB = (m.teamB||[]).filter(x => x !== pid);
@@ -778,7 +713,6 @@ function renderNewMatch(){
       if (!confirm("¿Eliminar partido?")) return;
       if (!confirm("Confirmá de nuevo: esto borra resultado, stats y votos. ¿Eliminar?")) return;
       state.data.matches = state.data.matches.filter(m => m.id !== id);
-      state.data.deletedMatchIds = uniqueStrings([...(state.data.deletedMatchIds || []), id]);
       state.ui.expandedMatches.delete(id);
       state.ui.expandedVotes.delete(id);
       state.draft = null;
@@ -808,14 +742,13 @@ function renderNewMatch(){
       m.playersPerTeam = d.playersPerTeam || 5;
       m.teamA = [...d.teamA];
       m.teamB = [...d.teamB];
-      m.updatedAt = new Date().toISOString();
       normalizeMatchAfterEdit(m);
       state.draft = null;
       state.editingMatchId = null;
       await persist("Partido actualizado");
       setView("matches");
     } else {
-      state.data.matches.push({ id:d.id, date:d.date, videoUrl: "", playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt, updatedAt:new Date().toISOString() });
+      state.data.matches.push({ id:d.id, date:d.date, videoUrl: "", playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
       state.draft = null;
       await persist("Partido creado");
       setView("matches");
@@ -871,6 +804,13 @@ function renderNewMatch(){
         renderNewMatch();
       });
     }
+
+    const touchScrollable = [playerList, ...$$(".dropzone.teamlist", root)].filter(Boolean);
+    touchScrollable.forEach(node => {
+      ["touchstart", "touchmove", "wheel"].forEach(evt => {
+        node.addEventListener(evt, (e) => { e.stopPropagation(); }, { passive: true });
+      });
+    });
   }
 
   function autoSwitchTeamIfNeeded(){
@@ -959,7 +899,6 @@ function renderMatches(){
         return;
       }
       m.videoUrl = canon;
-      m.updatedAt = new Date().toISOString();
       await persist("Video guardado");
       return;
     }
@@ -1034,7 +973,7 @@ function renderMatches(){
 
     if (!expanded){
       return `
-        <div class="match-card" data-card-match="${m.id}">
+        <div class="match-card is-collapsed" data-card-match="${m.id}">
           <div class="match-header">
             <div class="match-left">
               <div class="match-date">${fmtDate(m.date)}</div>
@@ -1099,7 +1038,7 @@ function renderMatches(){
     ` : ``;
 
     return `
-      <div class="match-card" data-card-match="${m.id}">
+      <div class="match-card is-expanded" data-card-match="${m.id}">
         <div class="match-header">
           <div class="match-left">
             <div class="match-date">${fmtDate(m.date)}</div>
@@ -1283,7 +1222,6 @@ function renderMatches(){
       const a = wheelValue(modal, "scoreA");
       const b = wheelValue(modal, "scoreB");
       match.manualScore = { a, b };
-      match.updatedAt = new Date().toISOString();
       modal.remove();
       await persist("Resultado guardado");
     };
@@ -1332,7 +1270,6 @@ function renderMatches(){
       const a = wheelValue(modal, "assists");
       match.playerStats = match.playerStats || {};
       match.playerStats[pid] = { goals: g, assists: a };
-      match.updatedAt = new Date().toISOString();
       modal.remove();
       await persist("Actualizado");
     };
@@ -1396,7 +1333,6 @@ function renderMatches(){
       const payload = { voterId, picks:[p1,p2,p3], createdAt:new Date().toISOString() };
       if (existingIdx >= 0) match.mvpVotes[existingIdx] = payload;
       else match.mvpVotes.push(payload);
-      match.updatedAt = new Date().toISOString();
 
       modal.remove();
       await persist("Voto guardado");
@@ -1431,19 +1367,19 @@ function renderLeaderboard(){
         </div>
       </div>
 
-      <table class="table rank-table ${hasExtra ? `has-extra` : `no-extra`}" style="margin-top:8px;">
+      <table class="table rank-table" style="margin-top:8px;">
         ${hasExtra ? `
           <colgroup>
-            <col style="width:12%" />
-            <col style="width:42%" />
-            <col style="width:14%" />
-            <col style="width:32%" />
+            <col style="width:52px" />
+            <col />
+            <col style="width:110px" />
+            <col style="width:260px" />
           </colgroup>
         ` : `
           <colgroup>
-            <col style="width:14%" />
-            <col style="width:56%" />
-            <col style="width:30%" />
+            <col style="width:52px" />
+            <col />
+            <col style="width:110px" />
           </colgroup>
         `}
         <thead><tr><th>#</th><th>Jugador</th><th>${mainLabel}</th>${hasExtra ? `<th>${extraLabel || ""}</th>` : ``}</tr></thead>
@@ -1487,8 +1423,7 @@ function wireUI(){
     setView(btn.dataset.view);
   });
 
-  const btnSync = $("#btnSync");
-  if (btnSync) btnSync.onclick = async () => {
+  $("#btnSync").onclick = async () => {
     try{
       overlay(true, "Sincronizando…");
       saveLocal(state.data);
