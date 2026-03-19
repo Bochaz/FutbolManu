@@ -6,6 +6,8 @@ const X_ACCESS_KEY = "$2a$10$nzjX1kWtm5vCMZj8qtlSoeP/kUp77ZWnpFE6kWIcnBqe1fDL1lk
 
 const API_BASE = "https://api.jsonbin.io/v3/b";
 const LS_KEY = "manu_futbol_data_v2";
+const LS_BACKUP_KEY = `${LS_KEY}_backups`;
+const MAX_LOCAL_BACKUPS = 3;
 
 /* ============================
    UTIL
@@ -122,15 +124,73 @@ function escapeHtml(str){
 }
 
 /* ============================
-   DATA MODEL (v2)
+   DATA MODEL (v3)
    ============================ */
+function isoNow(){
+  return new Date().toISOString();
+}
+
 function defaultData(){
   return {
-    version: 2,
+    version: 3,
     players: [],
     matches: [],
-    updatedAt: new Date().toISOString()
+    deletedPlayers: [],
+    deletedMatches: [],
+    updatedAt: isoNow()
   };
+}
+
+function cloneRecord(record){
+  return JSON.parse(JSON.stringify(record ?? defaultData()));
+}
+
+function latestIso(a, b){
+  const av = String(a || "");
+  const bv = String(b || "");
+  return av > bv ? av : bv;
+}
+
+function itemStamp(item){
+  return String(item?.updatedAt || item?.createdAt || "");
+}
+
+function uniqueIds(list){
+  return [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
+}
+
+function saveLocalBackup(record, reason="snapshot"){
+  try{
+    const entry = { savedAt: isoNow(), reason, record: cloneRecord(record) };
+    const raw = localStorage.getItem(LS_BACKUP_KEY);
+    const backups = raw ? JSON.parse(raw) : [];
+    backups.push(entry);
+    while (backups.length > MAX_LOCAL_BACKUPS) backups.shift();
+    localStorage.setItem(LS_BACKUP_KEY, JSON.stringify(backups));
+  }catch(err){
+    console.warn("No se pudo guardar backup local", err);
+  }
+}
+
+function touchPlayer(player){
+  const now = isoNow();
+  player.createdAt = player.createdAt || now;
+  player.updatedAt = now;
+  return player;
+}
+
+function touchMatch(match){
+  const now = isoNow();
+  match.createdAt = match.createdAt || now;
+  match.updatedAt = now;
+  return match;
+}
+
+function upsertDeletion(list, id, deletedAt=isoNow()){
+  if (!id) return;
+  const prev = list.find(x => x && x.id === id);
+  if (prev) prev.deletedAt = latestIso(prev.deletedAt, deletedAt);
+  else list.push({ id, deletedAt });
 }
 
 let state = {
@@ -143,7 +203,8 @@ let state = {
     expandedVotes: new Set(),
     playerQuery: "",
     nmQuery: ""
-  }};
+  }
+};
 
 /* ============================
    JSONBIN IO + LOCAL CACHE
@@ -187,18 +248,46 @@ function sanitizeData(d){
   const base = defaultData();
   if (!d || typeof d !== "object") return base;
 
+  const now = isoNow();
   const out = {
-    version: 2,
-    players: Array.isArray(d.players) ? d.players.filter(p => p && p.id && p.name) : [],
-    matches: Array.isArray(d.matches) ? d.matches.filter(m => m && m.id && m.date) : [],
-    updatedAt: d.updatedAt || new Date().toISOString()
+    version: 3,
+    players: [],
+    matches: [],
+    deletedPlayers: Array.isArray(d.deletedPlayers) ? d.deletedPlayers.filter(x => x && x.id).map(x => ({ id: x.id, deletedAt: x.deletedAt || now })) : [],
+    deletedMatches: Array.isArray(d.deletedMatches) ? d.deletedMatches.filter(x => x && x.id).map(x => ({ id: x.id, deletedAt: x.deletedAt || now })) : [],
+    updatedAt: d.updatedAt || now
   };
 
-  for (const m of out.matches){
-    m.teamA = Array.isArray(m.teamA) ? m.teamA : [];
-    m.teamB = Array.isArray(m.teamB) ? m.teamB : [];
+  const players = Array.isArray(d.players) ? d.players.filter(p => p && p.id && p.name) : [];
+  const playerMap = new Map();
+  for (const p of players){
+    const prev = playerMap.get(p.id);
+    const next = {
+      id: p.id,
+      name: String(p.name).trim().slice(0, 50),
+      createdAt: p.createdAt || p.updatedAt || now,
+      updatedAt: p.updatedAt || p.createdAt || now
+    };
+    if (!next.name) continue;
+    if (!prev || itemStamp(next) >= itemStamp(prev)) playerMap.set(next.id, next);
+  }
+  out.players = [...playerMap.values()];
 
-    // playersPerTeam (format: 5v5 .. 8v8)
+  const matches = Array.isArray(d.matches) ? d.matches.filter(m => m && m.id && m.date) : [];
+  const matchMap = new Map();
+
+  for (const rawMatch of matches){
+    const m = {
+      ...rawMatch,
+      id: rawMatch.id,
+      date: rawMatch.date,
+      createdAt: rawMatch.createdAt || rawMatch.updatedAt || now,
+      updatedAt: rawMatch.updatedAt || rawMatch.createdAt || now,
+      teamA: uniqueIds(rawMatch.teamA),
+      teamB: uniqueIds(rawMatch.teamB),
+      mvpVotes: Array.isArray(rawMatch.mvpVotes) ? rawMatch.mvpVotes : []
+    };
+
     if (m.playersPerTeam === undefined || m.playersPerTeam === null){
       const guess = Math.max(m.teamA.length, m.teamB.length);
       m.playersPerTeam = (guess >= 5 && guess <= 8) ? guess : 7;
@@ -206,15 +295,14 @@ function sanitizeData(d){
       m.playersPerTeam = clampInt(m.playersPerTeam);
       if (m.playersPerTeam < 5 || m.playersPerTeam > 8) m.playersPerTeam = 7;
     }
-    m.createdAt = m.createdAt || new Date().toISOString();
 
-        const _v = (typeof m.videoUrl === "string") ? normalizeUrl(m.videoUrl).slice(0, 600) : "";
-    m.videoUrl = canonicalYouTubeUrl(_v);
+    const videoInput = (typeof rawMatch.videoUrl === "string") ? normalizeUrl(rawMatch.videoUrl).slice(0, 600) : "";
+    m.videoUrl = canonicalYouTubeUrl(videoInput);
 
     if (!m.playerStats || typeof m.playerStats !== "object") m.playerStats = {};
 
-    if (Array.isArray(m.goals) && m.goals.length){
-      for (const g of m.goals){
+    if (Array.isArray(rawMatch.goals) && rawMatch.goals.length){
+      for (const g of rawMatch.goals){
         const scorer = g?.scorerId;
         const assist = g?.assistId;
         if (scorer){
@@ -229,16 +317,21 @@ function sanitizeData(d){
     }
     delete m.goals;
 
-    if (!Array.isArray(m.mvpVotes)) m.mvpVotes = [];
-    if (Array.isArray(m.mvp) && m.mvp.some(Boolean) && m.mvpVotes.length === 0){
-      m.mvpVotes.push({ voter: "Legacy", picks: [m.mvp[0]||null, m.mvp[1]||null, m.mvp[2]||null], createdAt: new Date().toISOString() });
+    if (Array.isArray(rawMatch.mvp) && rawMatch.mvp.some(Boolean) && m.mvpVotes.length === 0){
+      m.mvpVotes.push({ voter: "Legacy", picks: [rawMatch.mvp[0]||null, rawMatch.mvp[1]||null, rawMatch.mvp[2]||null], createdAt: now });
     }
     delete m.mvp;
 
+    const cleanStats = {};
     for (const [pid, ps] of Object.entries(m.playerStats)){
-      if (!ps || typeof ps !== "object") { delete m.playerStats[pid]; continue; }
-      m.playerStats[pid] = { goals: clampInt(ps.goals), assists: clampInt(ps.assists) };
+      if (!pid || !ps || typeof ps !== "object") continue;
+      cleanStats[pid] = { goals: clampInt(ps.goals), assists: clampInt(ps.assists) };
     }
+    m.playerStats = cleanStats;
+
+    m.manualScore = rawMatch.manualScore && (rawMatch.manualScore.a !== undefined || rawMatch.manualScore.b !== undefined)
+      ? { a: clampInt(rawMatch.manualScore.a), b: clampInt(rawMatch.manualScore.b) }
+      : null;
 
     m.mvpVotes = m.mvpVotes
       .filter(v => v && (v.voterId || v.voter))
@@ -249,12 +342,103 @@ function sanitizeData(d){
           voterId,
           voter,
           picks: Array.isArray(v.picks) ? [v.picks[0]||null, v.picks[1]||null, v.picks[2]||null] : [null,null,null],
-          createdAt: v.createdAt || new Date().toISOString()
+          createdAt: v.createdAt || now
         };
       });
+
+    const prev = matchMap.get(m.id);
+    if (!prev || itemStamp(m) >= itemStamp(prev)) matchMap.set(m.id, m);
   }
 
+  out.matches = [...matchMap.values()];
   return out;
+}
+
+function mergeTombstones(a=[], b=[]){
+  const map = new Map();
+  for (const item of [...a, ...b]){
+    if (!item?.id) continue;
+    const prev = map.get(item.id);
+    const next = { id: item.id, deletedAt: item.deletedAt || isoNow() };
+    if (!prev || next.deletedAt >= prev.deletedAt) map.set(item.id, next);
+  }
+  return [...map.values()];
+}
+
+function chooseNewestItem(a, b){
+  if (!a) return b || null;
+  if (!b) return a;
+  return itemStamp(b) > itemStamp(a) ? b : a;
+}
+
+function scrubMatchPlayers(match, validPlayerIds){
+  const clean = cloneRecord(match);
+  clean.teamA = uniqueIds(clean.teamA).filter(pid => validPlayerIds.has(pid));
+  clean.teamB = uniqueIds(clean.teamB).filter(pid => validPlayerIds.has(pid));
+
+  const participants = new Set([...clean.teamA, ...clean.teamB]);
+  const playerStats = {};
+  for (const [pid, ps] of Object.entries(clean.playerStats || {})){
+    if (!participants.has(pid)) continue;
+    playerStats[pid] = { goals: clampInt(ps.goals), assists: clampInt(ps.assists) };
+  }
+  clean.playerStats = playerStats;
+
+  clean.mvpVotes = (clean.mvpVotes || []).map(v => ({
+    ...v,
+    voterId: v.voterId && validPlayerIds.has(v.voterId) ? v.voterId : v.voterId || null,
+    picks: (v.picks || []).map(pid => pid && participants.has(pid) ? pid : null)
+  }));
+
+  return clean;
+}
+
+function mergeData(remoteRaw, localRaw){
+  const remote = sanitizeData(remoteRaw);
+  const local = sanitizeData(localRaw);
+
+  const deletedPlayers = mergeTombstones(remote.deletedPlayers, local.deletedPlayers);
+  const deletedMatches = mergeTombstones(remote.deletedMatches, local.deletedMatches);
+  const deletedPlayersMap = new Map(deletedPlayers.map(x => [x.id, x.deletedAt]));
+  const deletedMatchesMap = new Map(deletedMatches.map(x => [x.id, x.deletedAt]));
+
+  const playersById = new Map();
+  for (const p of [...remote.players, ...local.players]){
+    if (!p?.id) continue;
+    const deletedAt = deletedPlayersMap.get(p.id);
+    if (deletedAt && deletedAt >= itemStamp(p)) continue;
+    playersById.set(p.id, chooseNewestItem(playersById.get(p.id), p));
+  }
+  const players = [...playersById.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const validPlayerIds = new Set(players.map(p => p.id));
+
+  const matchesById = new Map();
+  for (const m of [...remote.matches, ...local.matches]){
+    if (!m?.id) continue;
+    const deletedAt = deletedMatchesMap.get(m.id);
+    if (deletedAt && deletedAt >= itemStamp(m)) continue;
+    const candidate = scrubMatchPlayers(m, validPlayerIds);
+    matchesById.set(candidate.id, chooseNewestItem(matchesById.get(candidate.id), candidate));
+  }
+  const matches = [...matchesById.values()].sort(sortMatchesDesc);
+
+  const updatedAt = [
+    remote.updatedAt,
+    local.updatedAt,
+    ...players.map(itemStamp),
+    ...matches.map(itemStamp),
+    ...deletedPlayers.map(x => x.deletedAt),
+    ...deletedMatches.map(x => x.deletedAt)
+  ].reduce((acc, cur) => latestIso(acc, cur), "") || isoNow();
+
+  return sanitizeData({
+    version: 3,
+    players,
+    matches,
+    deletedPlayers,
+    deletedMatches,
+    updatedAt
+  });
 }
 
 /* ============================
@@ -405,13 +589,27 @@ function sortMatchesDesc(a,b){
 async function persist(msg){
   try{
     overlay(true, "Guardando…");
-    state.data.updatedAt = new Date().toISOString();
+    let merged = sanitizeData(state.data);
+    merged.updatedAt = isoNow();
+
+    try{
+      const remoteLatest = await loadRemote();
+      merged = mergeData(remoteLatest, merged);
+      merged.updatedAt = isoNow();
+    }catch(syncErr){
+      console.warn("No se pudo leer remoto antes de guardar", syncErr);
+    }
+
+    state.data = sanitizeData(merged);
     saveLocal(state.data);
+    saveLocalBackup(state.data, "persist");
     await saveRemote(state.data);
     toast(msg);
   }catch(err){
     console.error(err);
+    state.data = sanitizeData(state.data);
     saveLocal(state.data);
+    saveLocalBackup(state.data, "offline");
     toast(msg + " (offline)");
   }finally{
     overlay(false);
@@ -463,7 +661,10 @@ function openRenamePlayerModal(player){
       return toast("Ya existe");
     }
     const p = state.data.players.find(x => x.id === player.id);
-    if (p) p.name = name;
+    if (p){
+      p.name = name;
+      touchPlayer(p);
+    }
     modal.remove();
     await persist("Jugador actualizado");
   };
@@ -539,7 +740,7 @@ function renderPlayers(){
     const name = ($("#playerName").value || "").trim();
     if (!name) return toast("Nombre requerido");
     if (state.data.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return toast("Ya existe");
-    state.data.players.push({ id: uuid(), name });
+    state.data.players.push(touchPlayer({ id: uuid(), name }));
     await persist("Jugador agregado");
     $("#playerName").value = "";
   };
@@ -567,12 +768,14 @@ function renderPlayers(){
     const used = state.data.matches.some(m => (m.teamA||[]).includes(pid) || (m.teamB||[]).includes(pid));
     if (used && !confirm("Ese jugador aparece en partidos. ¿Eliminar igual?")) return;
 
+    upsertDeletion(state.data.deletedPlayers, pid);
     state.data.players = state.data.players.filter(p => p.id !== pid);
     for (const m of state.data.matches){
       m.teamA = (m.teamA||[]).filter(x => x !== pid);
       m.teamB = (m.teamB||[]).filter(x => x !== pid);
       if (m.playerStats) delete m.playerStats[pid];
       m.mvpVotes = (m.mvpVotes||[]).map(v => ({ ...v, picks: (v.picks||[]).map(x => x === pid ? null : x) }));
+      touchMatch(m);
     }
     await persist("Jugador eliminado");
   };
@@ -674,8 +877,6 @@ function renderNewMatch(){
 
     <div class="hr"></div>
 
-    <div class="hr"></div>
-
     <div class="newmatch-layout">
       <div class="team-select nm-team-select">
                 <button class="team-toggle teamA ${d.activeTeam==='A' ? 'is-active' : ''}" id="selTeamA">Equipo A</button>
@@ -711,6 +912,7 @@ function renderNewMatch(){
       if (!id) return;
       if (!confirm("¿Eliminar partido?")) return;
       if (!confirm("Confirmá de nuevo: esto borra resultado, stats y votos. ¿Eliminar?")) return;
+      upsertDeletion(state.data.deletedMatches, id);
       state.data.matches = state.data.matches.filter(m => m.id !== id);
       state.ui.expandedMatches.delete(id);
       state.ui.expandedVotes.delete(id);
@@ -742,12 +944,13 @@ function renderNewMatch(){
       m.teamA = [...d.teamA];
       m.teamB = [...d.teamB];
       normalizeMatchAfterEdit(m);
+      touchMatch(m);
       state.draft = null;
       state.editingMatchId = null;
       await persist("Partido actualizado");
       setView("matches");
     } else {
-      state.data.matches.push({ id:d.id, date:d.date, videoUrl: "", playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt });
+      state.data.matches.push(touchMatch({ id:d.id, date:d.date, videoUrl: "", playersPerTeam: d.playersPerTeam || 5, teamA:[...d.teamA], teamB:[...d.teamB], playerStats:{}, mvpVotes:[], createdAt:d.createdAt }));
       state.draft = null;
       await persist("Partido creado");
       setView("matches");
@@ -891,6 +1094,7 @@ function renderMatches(){
         return;
       }
       m.videoUrl = canon;
+      touchMatch(m);
       await persist("Video guardado");
       return;
     }
@@ -1214,6 +1418,7 @@ function renderMatches(){
       const a = wheelValue(modal, "scoreA");
       const b = wheelValue(modal, "scoreB");
       match.manualScore = { a, b };
+      touchMatch(match);
       modal.remove();
       await persist("Resultado guardado");
     };
@@ -1262,6 +1467,7 @@ function renderMatches(){
       const a = wheelValue(modal, "assists");
       match.playerStats = match.playerStats || {};
       match.playerStats[pid] = { goals: g, assists: a };
+      touchMatch(match);
       modal.remove();
       await persist("Actualizado");
     };
@@ -1325,6 +1531,7 @@ function renderMatches(){
       const payload = { voterId, picks:[p1,p2,p3], createdAt:new Date().toISOString() };
       if (existingIdx >= 0) match.mvpVotes[existingIdx] = payload;
       else match.mvpVotes.push(payload);
+      touchMatch(match);
 
       modal.remove();
       await persist("Voto guardado");
@@ -1416,21 +1623,6 @@ function wireUI(){
     }
     setView(btn.dataset.view);
   });
-
-  const btnSync = $("#btnSync");
-  if (btnSync) btnSync.onclick = async () => {
-    try{
-      overlay(true, "Sincronizando…");
-      saveLocal(state.data);
-      await saveRemote(state.data);
-      toast("Sync OK");
-    }catch(err){
-      console.error(err);
-      toast("Sync falló");
-    }finally{
-      overlay(false);
-    }
-  };
 }
 
 /* ============================
@@ -1438,19 +1630,34 @@ function wireUI(){
    ============================ */
 async function initialLoad(){
   overlay(true, "Cargando…");
+  const local = loadLocal();
+  let remote = null;
+
   try{
-    const remote = await loadRemote();
-    state.data = sanitizeData(remote);
-    saveLocal(state.data);
+    remote = await loadRemote();
   }catch(err){
-    const local = loadLocal();
-    state.data = local ? sanitizeData(local) : defaultData();
-  }finally{
-    overlay(false);
-    state.stats = computeStats(state.data);
-    if ((state.data.matches || []).length === 0) setView("newMatch");
-    else setView("matches");
+    console.warn("No se pudo cargar remoto al iniciar", err);
   }
+
+  state.data = mergeData(remote, local);
+  saveLocal(state.data);
+  saveLocalBackup(state.data, "boot");
+
+  if (remote){
+    try{
+      const cleanRemote = sanitizeData(remote);
+      if (JSON.stringify(cleanRemote) !== JSON.stringify(state.data)){
+        await saveRemote(state.data);
+      }
+    }catch(syncErr){
+      console.warn("No se pudo sincronizar el merge inicial", syncErr);
+    }
+  }
+
+  overlay(false);
+  state.stats = computeStats(state.data);
+  if ((state.data.matches || []).length === 0) setView("newMatch");
+  else setView("matches");
 }
 
 wireUI();

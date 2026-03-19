@@ -52,16 +52,6 @@ body::before{
 }
 
 .brand{ display:flex; align-items:center; gap:12px; }
-.logo-mark{
-  width:42px; height:42px; border-radius: 14px;
-  display:grid; place-items:center;
-  background: linear-gradient(180deg, rgba(124,92,255,.30), rgba(37,198,216,.10));
-  border:1px solid rgba(255,255,255,.12);
-  box-shadow: var(--shadow);
-  font-size:14px;
-  font-weight:950;
-  letter-spacing:.6px;
-}
 .brand-title{ font-weight:950; letter-spacing:.2px; }
 .brand-sub{ color:var(--muted); font-size:12px; margin-top:2px; }
 
@@ -80,11 +70,6 @@ body::before{
 .tab.is-active{
   background: rgba(124,92,255,.20);
   border-color: rgba(124,92,255,.42);
-}
-.tab-ghost{
-  background: transparent;
-  border-color: rgba(255,255,255,.12);
-  color: var(--muted);
 }
 
 .main{
@@ -307,14 +292,6 @@ body::before{
   max-height: 520px;
   overflow:auto;
   padding-right: 4px;
-}
-.teams-right{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-@media (max-width: 900px){
-  .teams-right{ grid-template-columns: 1fr; }
 }
 
 /* Partidos */
@@ -542,7 +519,6 @@ body::before{
 }
 
 
-.newmatch-right{ display:flex; flex-direction:column; gap:10px; align-self:start; }
 
 
 .select option{
@@ -601,8 +577,7 @@ select.select option{
 
 @media (max-width: 720px){
   .topbar{ padding: 8px 10px; }
-  .logo-mark{ width:38px; height:38px; border-radius:12px; font-size:13px; }
-  .brand-title{ font-size:15px; }
+    .brand-title{ font-size:15px; }
   .brand-sub{ display:none; }
   .tabs{
     flex-wrap: nowrap;
@@ -624,7 +599,6 @@ select.select option{
 
   /* Nuevo Partido */
   .newmatch-layout{ grid-template-columns: 1fr; gap: 10px; }
-  .teams-right{ grid-template-columns: 1fr; gap: 10px; }
   .nm-team-select{ margin-bottom: 2px; }
   .team-toggle{ padding: 8px 10px; font-size: 12px; }
   .player-list,
